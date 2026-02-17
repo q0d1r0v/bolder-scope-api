@@ -1,0 +1,648 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String                @id @default(uuid()) @db.Uuid
+  email             String                @unique
+  passwordHash      String?
+  fullName          String
+  avatarUrl         String?
+  systemRole        SystemRole            @default(USER)
+  status            UserStatus            @default(ACTIVE)
+  isEmailVerified   Boolean               @default(false)
+  lastLoginAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  authSessions      AuthSession[]
+  memberships       OrganizationMember[]  @relation("OrganizationMemberUser")
+  sentInvites       OrganizationMember[]  @relation("OrganizationInviteSender")
+  projectMembership ProjectMember[]
+  createdProjects   Project[]             @relation("ProjectCreator")
+  projectInputs     ProjectInput[]        @relation("ProjectInputAuthor")
+  requirements      RequirementSnapshot[] @relation("RequirementCreator")
+  estimates         EstimateSnapshot[]    @relation("EstimateCreator")
+  aiRuns            AiRun[]               @relation("AiRunInitiator")
+  uploadedFiles     FileAsset[]           @relation("FileUploadedBy")
+  emails            EmailDelivery[]       @relation("EmailActor")
+  activities        ProjectActivity[]     @relation("ProjectActivityActor")
+
+  @@map("users")
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String
+  ipAddress        String?
+  userAgent        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model Organization {
+  id               String               @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String               @unique
+  type             OrganizationType     @default(AGENCY)
+  status           OrganizationStatus   @default(ACTIVE)
+  billingEmail     String?
+  stripeCustomerId String?              @unique
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  memberships      OrganizationMember[]
+  projects         Project[]            @relation("AgencyProjects")
+  clientProjects   Project[]            @relation("ClientProjects")
+  subscriptions    Subscription[]
+  invoices         BillingInvoice[]
+  usageRecords     UsageRecord[]
+  files            FileAsset[]
+  emails           EmailDelivery[]
+  aiRuns           AiRun[]
+  activities       ProjectActivity[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  role           OrganizationRole
+  invitedById    String?          @db.Uuid
+  inviteToken    String?          @unique
+  inviteStatus   InviteStatus     @default(ACCEPTED)
+  inviteEmail    String?
+  invitedAt      DateTime?
+  joinedAt       DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation("OrganizationMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy      User?            @relation("OrganizationInviteSender", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, role])
+  @@index([userId])
+  @@index([inviteToken])
+  @@map("organization_members")
+}
+
+model Project {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  organizationId       String                    @db.Uuid
+  clientOrganizationId String?                   @db.Uuid
+  createdById          String                    @db.Uuid
+  name                 String
+  description          String?
+  status               ProjectStatus             @default(DRAFT)
+  stage                ProjectStage              @default(REQUIREMENT_DISCOVERY)
+  sourceType           ProjectSourceType         @default(TEXT)
+  currency             String                    @default("USD")
+  archivedAt           DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  organization         Organization              @relation("AgencyProjects", fields: [organizationId], references: [id], onDelete: Cascade)
+  clientOrganization   Organization?             @relation("ClientProjects", fields: [clientOrganizationId], references: [id], onDelete: SetNull)
+  createdBy            User                      @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members              ProjectMember[]
+  inputs               ProjectInput[]
+  requirements         RequirementSnapshot[]
+  features             FeatureItem[]
+  estimates            EstimateSnapshot[]
+  techRecommendations  TechStackRecommendation[]
+  aiRuns               AiRun[]
+  files                FileAsset[]
+  emails               EmailDelivery[]
+  usageRecords         UsageRecord[]
+  activities           ProjectActivity[]
+
+  @@index([organizationId, status])
+  @@index([createdById])
+  @@index([stage])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String      @id @default(uuid()) @db.Uuid
+  projectId String      @db.Uuid
+  userId    String      @db.Uuid
+  role      ProjectRole
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+model ProjectInput {
+  id              String                @id @default(uuid()) @db.Uuid
+  projectId       String                @db.Uuid
+  authorId        String?               @db.Uuid
+  sourceType      InputSourceType       @default(TEXT)
+  rawText         String?
+  languageCode    String?
+  transcriptText  String?
+  voiceAssetId    String?               @db.Uuid
+  durationSeconds Int?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  project         Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author          User?                 @relation("ProjectInputAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  voiceAsset      FileAsset?            @relation("ProjectInputVoiceAsset", fields: [voiceAssetId], references: [id], onDelete: SetNull)
+  requirements    RequirementSnapshot[]
+  aiRuns          AiRun[]
+
+  @@index([projectId, createdAt])
+  @@index([sourceType])
+  @@map("project_inputs")
+}
+
+model RequirementSnapshot {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  projectId           String                    @db.Uuid
+  sourceInputId       String?                   @db.Uuid
+  version             Int
+  status              RequirementStatus         @default(GENERATED)
+  rawRequirementText  String?
+  structuredJson      Json
+  assumptions         String?
+  createdById         String?                   @db.Uuid
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  project             Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceInput         ProjectInput?             @relation(fields: [sourceInputId], references: [id], onDelete: SetNull)
+  createdBy           User?                     @relation("RequirementCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  features            FeatureItem[]
+  estimates           EstimateSnapshot[]        @relation("EstimateRequirement")
+  techRecommendations TechStackRecommendation[] @relation("TechStackRequirement")
+  aiRuns              AiRun[]                   @relation("AiRunRequirement")
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("requirement_snapshots")
+}
+
+model FeatureItem {
+  id                    String               @id @default(uuid()) @db.Uuid
+  projectId             String               @db.Uuid
+  requirementSnapshotId String?              @db.Uuid
+  title                 String
+  description           String?
+  priority              FeaturePriority      @default(SHOULD)
+  complexity            FeatureComplexity?
+  orderIndex            Int                  @default(0)
+  isUserEdited          Boolean              @default(false)
+  metadata              Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementSnapshot   RequirementSnapshot? @relation(fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  estimateLineItems     EstimateLineItem[]
+
+  @@index([projectId, orderIndex])
+  @@index([requirementSnapshotId])
+  @@map("feature_items")
+}
+
+model EstimateSnapshot {
+  id                    String               @id @default(uuid()) @db.Uuid
+  projectId             String               @db.Uuid
+  requirementSnapshotId String?              @db.Uuid
+  version               Int
+  status                EstimateStatus       @default(GENERATED)
+  aiProvider            AiProvider?
+  currency              String               @default("USD")
+  timelineMinDays       Int
+  timelineMaxDays       Int
+  costMin               Decimal              @db.Decimal(12, 2)
+  costMax               Decimal              @db.Decimal(12, 2)
+  confidenceScore       Decimal?             @db.Decimal(5, 2)
+  assumptions           String?
+  breakdownJson         Json?
+  createdById           String?              @db.Uuid
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementSnapshot   RequirementSnapshot? @relation("EstimateRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  createdBy             User?                @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  lineItems             EstimateLineItem[]
+  aiRuns                AiRun[]              @relation("AiRunEstimate")
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("estimate_snapshots")
+}
+
+model EstimateLineItem {
+  id            String           @id @default(uuid()) @db.Uuid
+  estimateId    String           @db.Uuid
+  featureItemId String?          @db.Uuid
+  name          String
+  description   String?
+  hoursMin      Int?
+  hoursMax      Int?
+  costMin       Decimal?         @db.Decimal(12, 2)
+  costMax       Decimal?         @db.Decimal(12, 2)
+  sortOrder     Int              @default(0)
+  metadata      Json?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  estimate      EstimateSnapshot @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  featureItem   FeatureItem?     @relation(fields: [featureItemId], references: [id], onDelete: SetNull)
+
+  @@index([estimateId, sortOrder])
+  @@index([featureItemId])
+  @@map("estimate_line_items")
+}
+
+model TechStackRecommendation {
+  id                    String               @id @default(uuid()) @db.Uuid
+  projectId             String               @db.Uuid
+  requirementSnapshotId String?              @db.Uuid
+  version               Int
+  frontend              String[]
+  backend               String[]
+  database              String[]
+  infrastructure        String[]
+  integrations          String[]
+  rationale             Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementSnapshot   RequirementSnapshot? @relation("TechStackRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, version])
+  @@map("tech_stack_recommendations")
+}
+
+model AiRun {
+  id                    String               @id @default(uuid()) @db.Uuid
+  organizationId        String?              @db.Uuid
+  projectId             String?              @db.Uuid
+  projectInputId        String?              @db.Uuid
+  requirementSnapshotId String?              @db.Uuid
+  estimateSnapshotId    String?              @db.Uuid
+  initiatedById         String?              @db.Uuid
+  provider              AiProvider
+  model                 String
+  taskType              AiTaskType
+  status                AiRunStatus          @default(QUEUED)
+  inputTokens           Int?
+  outputTokens          Int?
+  totalCostUsd          Decimal?             @db.Decimal(12, 4)
+  latencyMs             Int?
+  requestPayload        Json?
+  responsePayload       Json?
+  errorMessage          String?
+  createdAt             DateTime             @default(now())
+  organization          Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  project               Project?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectInput          ProjectInput?        @relation(fields: [projectInputId], references: [id], onDelete: SetNull)
+  requirementSnapshot   RequirementSnapshot? @relation("AiRunRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  estimateSnapshot      EstimateSnapshot?    @relation("AiRunEstimate", fields: [estimateSnapshotId], references: [id], onDelete: SetNull)
+  initiatedBy           User?                @relation("AiRunInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([organizationId, taskType, createdAt])
+  @@index([status])
+  @@map("ai_runs")
+}
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  organizationId       String             @db.Uuid
+  stripeSubscriptionId String             @unique
+  stripePriceId        String
+  status               SubscriptionStatus
+  interval             BillingInterval
+  seats                Int                @default(1)
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  trialEndsAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  organization         Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices             BillingInvoice[]
+
+  @@index([organizationId, status])
+  @@map("subscriptions")
+}
+
+model BillingInvoice {
+  id                    String        @id @default(uuid()) @db.Uuid
+  organizationId        String        @db.Uuid
+  subscriptionId        String?       @db.Uuid
+  stripeInvoiceId       String        @unique
+  stripePaymentIntentId String?       @unique
+  status                InvoiceStatus
+  currency              String        @default("USD")
+  amountDue             Decimal       @db.Decimal(12, 2)
+  amountPaid            Decimal?      @db.Decimal(12, 2)
+  periodStart           DateTime?
+  periodEnd             DateTime?
+  dueAt                 DateTime?
+  paidAt                DateTime?
+  hostedInvoiceUrl      String?
+  pdfUrl                String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  organization          Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription          Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([subscriptionId])
+  @@map("billing_invoices")
+}
+
+model UsageRecord {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @db.Uuid
+  projectId      String?         @db.Uuid
+  metric         UsageMetricType
+  quantity       Decimal         @db.Decimal(14, 4)
+  unit           String
+  windowStart    DateTime
+  windowEnd      DateTime
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, metric, windowStart])
+  @@index([projectId])
+  @@map("usage_records")
+}
+
+model EmailDelivery {
+  id                String        @id @default(uuid()) @db.Uuid
+  organizationId    String?       @db.Uuid
+  projectId         String?       @db.Uuid
+  userId            String?       @db.Uuid
+  provider          EmailProvider @default(SENDGRID)
+  templateKey       String
+  toEmail           String
+  subject           String?
+  status            EmailStatus   @default(QUEUED)
+  providerMessageId String?
+  payload           Json?
+  errorMessage      String?
+  sentAt            DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  organization      Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  project           Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user              User?         @relation("EmailActor", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([projectId, createdAt])
+  @@index([toEmail])
+  @@map("email_deliveries")
+}
+
+model FileAsset {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String?        @db.Uuid
+  projectId      String?        @db.Uuid
+  uploadedById   String?        @db.Uuid
+  provider       AssetProvider  @default(CLOUDFLARE_R2)
+  bucket         String
+  objectKey      String
+  mimeType       String?
+  sizeBytes      BigInt?
+  checksum       String?
+  kind           AssetKind
+  metadata       Json?
+  publicUrl      String?
+  createdAt      DateTime       @default(now())
+  deletedAt      DateTime?
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  project        Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  uploadedBy     User?          @relation("FileUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  voiceInputs    ProjectInput[] @relation("ProjectInputVoiceAsset")
+
+  @@unique([bucket, objectKey])
+  @@index([organizationId, kind])
+  @@index([projectId, createdAt])
+  @@map("file_assets")
+}
+
+model ProjectActivity {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  projectId      String           @db.Uuid
+  actorUserId    String?          @db.Uuid
+  eventType      ProjectEventType
+  summary        String
+  payload        Json?
+  createdAt      DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorUser      User?            @relation("ProjectActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("project_activities")
+}
+
+enum SystemRole {
+  SUPER_ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum OrganizationType {
+  AGENCY
+  CLIENT
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  DEVELOPER
+  CLIENT
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum ProjectRole {
+  OWNER
+  MANAGER
+  CONTRIBUTOR
+  CLIENT_VIEWER
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  ESTIMATE_READY
+  APPROVED
+  ARCHIVED
+}
+
+enum ProjectStage {
+  REQUIREMENT_DISCOVERY
+  FEATURE_DEFINITION
+  ESTIMATION
+  REVIEW
+}
+
+enum ProjectSourceType {
+  TEXT
+  VOICE
+  MIXED
+}
+
+enum InputSourceType {
+  TEXT
+  VOICE
+  FORM
+}
+
+enum RequirementStatus {
+  DRAFT
+  GENERATED
+  REVIEWED
+  APPROVED
+}
+
+enum FeaturePriority {
+  MUST
+  SHOULD
+  COULD
+  WONT
+}
+
+enum FeatureComplexity {
+  XS
+  S
+  M
+  L
+  XL
+}
+
+enum EstimateStatus {
+  GENERATED
+  REVIEWED
+  FINAL
+}
+
+enum AiProvider {
+  OPENAI
+  CLAUDE
+  HYBRID
+  RULES_ENGINE
+}
+
+enum AiTaskType {
+  REQUIREMENT_STRUCTURING
+  FEATURE_EXTRACTION
+  TIMELINE_ESTIMATION
+  COST_ESTIMATION
+  TECH_STACK_RECOMMENDATION
+}
+
+enum AiRunStatus {
+  QUEUED
+  SUCCESS
+  FAILED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  PAUSED
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum UsageMetricType {
+  AI_REQUEST
+  INPUT_TOKENS
+  OUTPUT_TOKENS
+  STORAGE_BYTES
+  VOICE_SECONDS
+  EMAIL_SENT
+}
+
+enum EmailProvider {
+  SENDGRID
+}
+
+enum EmailStatus {
+  QUEUED
+  SENT
+  FAILED
+  BOUNCED
+}
+
+enum AssetProvider {
+  CLOUDFLARE_R2
+}
+
+enum AssetKind {
+  VOICE_INPUT
+  WIREFRAME_EXPORT
+  ATTACHMENT
+}
+
+enum ProjectEventType {
+  PROJECT_CREATED
+  INPUT_ADDED
+  REQUIREMENT_GENERATED
+  FEATURES_UPDATED
+  ESTIMATE_GENERATED
+  TECH_STACK_GENERATED
+  STATUS_CHANGED
+  MEMBER_ADDED
+  CONTRACT_APPROVED
+}

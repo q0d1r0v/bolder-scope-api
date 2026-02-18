@@ -13,11 +13,13 @@ import { OrganizationsModule } from '@/modules/organizations/organizations.modul
 import { ProjectsModule } from '@/modules/projects/projects.module';
 import { RequirementsModule } from '@/modules/requirements/requirements.module';
 import { TechStackModule } from '@/modules/tech-stack/tech-stack.module';
+import { AdminModule } from '@/modules/admin/admin.module';
 import { envValidationSchema } from '@/config/env.validation';
 import { ThrottlerBehindProxyGuard } from '@/common/guards/throttler-behind-proxy.guard';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { RolesGuard } from '@/common/guards/roles.guard';
 import { EmailVerifiedGuard } from '@/common/guards/email-verified.guard';
+import { SystemRolesGuard } from '@/common/guards/system-roles.guard';
 
 @Module({
   imports: [
@@ -49,6 +51,7 @@ import { EmailVerifiedGuard } from '@/common/guards/email-verified.guard';
     AiModule,
     BillingModule,
     IntegrationsModule,
+    AdminModule,
   ],
   providers: [
     {
@@ -66,6 +69,10 @@ import { EmailVerifiedGuard } from '@/common/guards/email-verified.guard';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: SystemRolesGuard,
     },
   ],
 })

@@ -393,6 +393,7 @@ Return ONLY valid JSON. No text outside the JSON object.`;
       priority: string;
       complexity: string;
     }>,
+    instruction?: string,
     context?: { organizationId?: string; projectId?: string; userId: string },
   ): Promise<{ result: TechStackResult; aiRunId: string }> {
     this.ensureConfigured();
@@ -406,7 +407,7 @@ Return ONLY valid JSON. No text outside the JSON object.`;
         model: this.model,
         taskType: AiTaskType.TECH_STACK_RECOMMENDATION,
         status: AiRunStatus.QUEUED,
-        requestPayload: { structuredJson, features } as object,
+        requestPayload: { structuredJson, features, instruction } as object,
       },
     });
 
@@ -427,10 +428,14 @@ Respond with valid JSON matching this schema:
 Recommend modern, production-ready technologies. Consider scalability, developer experience, and community support.
 Return ONLY valid JSON. No text outside the JSON object.`;
 
+    const userMessage = instruction
+      ? `Requirements:\n${JSON.stringify(structuredJson, null, 2)}\n\nFeatures:\n${JSON.stringify(features, null, 2)}\n\nAdditional instruction: ${instruction}`
+      : `Requirements:\n${JSON.stringify(structuredJson, null, 2)}\n\nFeatures:\n${JSON.stringify(features, null, 2)}`;
+
     const result = await this.callClaude<TechStackResult>(
       aiRun.id,
       systemPrompt,
-      `Requirements:\n${JSON.stringify(structuredJson, null, 2)}\n\nFeatures:\n${JSON.stringify(features, null, 2)}`,
+      userMessage,
     );
 
     return { result, aiRunId: aiRun.id };

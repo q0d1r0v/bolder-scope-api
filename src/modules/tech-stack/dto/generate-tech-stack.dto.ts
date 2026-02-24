@@ -1,4 +1,4 @@
-import { IsOptional, IsUUID } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class GenerateTechStackDto {
   @IsUUID()
@@ -7,4 +7,9 @@ export class GenerateTechStackDto {
   @IsOptional()
   @IsUUID()
   requirementSnapshotId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  instruction?: string;
 }

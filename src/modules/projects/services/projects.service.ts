@@ -164,6 +164,51 @@ export class ProjectsService {
     return project;
   }
 
+  async findInputs(
+    projectId: string,
+    user: CurrentUserShape,
+    query: PaginationQueryDto,
+  ) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, organizationId: true },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    await this.requireProjectAccess(projectId, project.organizationId, user);
+
+    const { skip, take } = buildPrismaPagination(query);
+
+    const where = { projectId };
+
+    const [inputs, total] = await Promise.all([
+      this.prisma.projectInput.findMany({
+        where,
+        select: {
+          id: true,
+          sourceType: true,
+          rawText: true,
+          transcriptText: true,
+          languageCode: true,
+          durationSeconds: true,
+          createdAt: true,
+          author: {
+            select: { id: true, email: true, fullName: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.projectInput.count({ where }),
+    ]);
+
+    return paginate(inputs, total, query);
+  }
+
   async addInput(
     projectId: string,
     payload: AddProjectInputDto,

@@ -69,6 +69,20 @@ export class ProjectsController {
     return this.projectsService.findOne(projectId, user);
   }
 
+  @Get(':projectId/inputs')
+  @ApiOperation({ summary: 'List inputs for a project' })
+  @ApiOkResponse({ description: 'Paginated list of project inputs' })
+  @ApiNotFoundResponse({ description: 'Project not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
+  @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
+  findInputs(
+    @Param('projectId') projectId: string,
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.projectsService.findInputs(projectId, user, query);
+  }
+
   @Post(':projectId/inputs')
   @ApiOperation({ summary: 'Add an input (text/voice/form) to a project' })
   @ApiCreatedResponse({ description: 'Input added successfully' })

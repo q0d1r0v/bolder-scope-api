@@ -84,6 +84,7 @@ export class TechStackService {
           priority: f.priority,
           complexity: f.complexity ?? 'M',
         })),
+        payload.instruction,
         aiContext,
       );
 

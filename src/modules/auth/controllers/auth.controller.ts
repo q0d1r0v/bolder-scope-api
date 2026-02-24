@@ -11,7 +11,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { Public } from '@/common/decorators/public.decorator';
-import { AuthResponseDto, LogoutResponseDto } from '@/modules/auth/dto/auth-response.dto';
+import {
+  AuthResponseDto,
+  LogoutResponseDto,
+} from '@/modules/auth/dto/auth-response.dto';
 import { LoginDto } from '@/modules/auth/dto/login.dto';
 import { RefreshTokenDto } from '@/modules/auth/dto/refresh-token.dto';
 import { RegisterDto } from '@/modules/auth/dto/register.dto';
@@ -25,7 +28,9 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  @ApiOperation({ summary: 'Register a new user account and send verification email' })
+  @ApiOperation({
+    summary: 'Register a new user account and send verification email',
+  })
   @ApiCreatedResponse({
     description: 'User created and initial auth tokens issued',
     type: AuthResponseDto,
@@ -56,7 +61,9 @@ export class AuthController {
     type: AuthResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiUnauthorizedResponse({ description: 'Refresh token is expired or invalid' })
+  @ApiUnauthorizedResponse({
+    description: 'Refresh token is expired or invalid',
+  })
   @ApiForbiddenResponse({ description: 'User account is not active' })
   refresh(@Body() payload: RefreshTokenDto) {
     return this.authService.refresh(payload);
@@ -80,7 +87,9 @@ export class AuthController {
     type: AuthResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiUnauthorizedResponse({ description: 'Invalid or expired email verification token' })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or expired email verification token',
+  })
   verifyEmail(@Body() payload: VerifyEmailDto) {
     return this.authService.verifyEmail(payload);
   }
@@ -97,7 +106,9 @@ export class AuthController {
     type: AuthResponseDto,
   })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiUnauthorizedResponse({ description: 'Invalid or expired email verification token' })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid or expired email verification token',
+  })
   verifyEmailFromQuery(@Query() payload: VerifyEmailDto) {
     return this.authService.verifyEmail(payload);
   }

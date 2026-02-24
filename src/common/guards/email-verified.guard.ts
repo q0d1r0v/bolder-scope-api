@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '@/common/decorators/public.decorator';
 import { CurrentUserShape } from '@/common/decorators/current-user.decorator';
@@ -17,7 +22,9 @@ export class EmailVerifiedGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<{ user?: CurrentUserShape }>();
+    const request = context
+      .switchToHttp()
+      .getRequest<{ user?: CurrentUserShape }>();
     const user = request.user;
 
     if (!user) {
@@ -25,7 +32,9 @@ export class EmailVerifiedGuard implements CanActivate {
     }
 
     if (!user.isEmailVerified) {
-      throw new ForbiddenException('Please verify your email address before accessing this resource');
+      throw new ForbiddenException(
+        'Please verify your email address before accessing this resource',
+      );
     }
 
     return true;

@@ -19,8 +19,10 @@ export class EmailIntegrationService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    this.sendgridApiKey = this.configService.get<string>('SENDGRID_API_KEY')?.trim() || null;
-    this.sendgridFromEmail = this.configService.get<string>('SENDGRID_FROM_EMAIL')?.trim() || null;
+    this.sendgridApiKey =
+      this.configService.get<string>('SENDGRID_API_KEY')?.trim() || null;
+    this.sendgridFromEmail =
+      this.configService.get<string>('SENDGRID_FROM_EMAIL')?.trim() || null;
   }
 
   async send(payload: SendTransactionalEmailDto) {
@@ -53,34 +55,39 @@ export class EmailIntegrationService {
 
     try {
       const compiledContent = this.resolveEmailContent(payload);
-      const sendgridResponse = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.sendgridApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          personalizations: [
-            {
-              to: [{ email: resolvedEmail }],
-              dynamic_template_data: payload.payload ?? {},
-            },
-          ],
-          from: {
-            email: this.sendgridFromEmail,
+      const sendgridResponse = await fetch(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.sendgridApiKey}`,
+            'Content-Type': 'application/json',
           },
-          subject: compiledContent.subject,
-          content: [
-            { type: 'text/plain', value: compiledContent.text },
-            { type: 'text/html', value: compiledContent.html },
-          ],
-        }),
-      });
+          body: JSON.stringify({
+            personalizations: [
+              {
+                to: [{ email: resolvedEmail }],
+                dynamic_template_data: payload.payload ?? {},
+              },
+            ],
+            from: {
+              email: this.sendgridFromEmail,
+            },
+            subject: compiledContent.subject,
+            content: [
+              { type: 'text/plain', value: compiledContent.text },
+              { type: 'text/html', value: compiledContent.html },
+            ],
+          }),
+        },
+      );
 
       if (!sendgridResponse.ok) {
         const errorMessage = await this.extractSendgridError(sendgridResponse);
         await this.failDelivery(delivery.id, errorMessage);
-        throw new BadGatewayException(`SendGrid rejected email: ${errorMessage}`);
+        throw new BadGatewayException(
+          `SendGrid rejected email: ${errorMessage}`,
+        );
       }
 
       const providerMessageId = sendgridResponse.headers.get('x-message-id');
@@ -145,9 +152,15 @@ export class EmailIntegrationService {
       };
     }
 
-    if (payload.templateKey.trim().toUpperCase() === 'AUTH_EMAIL_VERIFICATION') {
-      const fullName = this.extractString(payload.payload, 'fullName') ?? 'there';
-      const verificationUrl = this.extractString(payload.payload, 'verificationUrl');
+    if (
+      payload.templateKey.trim().toUpperCase() === 'AUTH_EMAIL_VERIFICATION'
+    ) {
+      const fullName =
+        this.extractString(payload.payload, 'fullName') ?? 'there';
+      const verificationUrl = this.extractString(
+        payload.payload,
+        'verificationUrl',
+      );
       const expiresAt = this.extractString(payload.payload, 'expiresAt');
 
       if (!verificationUrl || !expiresAt) {
@@ -157,7 +170,8 @@ export class EmailIntegrationService {
       }
 
       return {
-        subject: payload.subject ?? 'Verify your email to activate Bolder Scope',
+        subject:
+          payload.subject ?? 'Verify your email to activate Bolder Scope',
         text:
           payload.text ??
           [
@@ -180,7 +194,8 @@ export class EmailIntegrationService {
 
     const fallbackPayload = JSON.stringify(payload.payload ?? {}, null, 2);
     return {
-      subject: payload.subject ?? `Bolder Scope notification (${payload.templateKey})`,
+      subject:
+        payload.subject ?? `Bolder Scope notification (${payload.templateKey})`,
       text: payload.text ?? fallbackPayload,
       html: payload.html ?? `<pre>${this.escapeHtml(fallbackPayload)}</pre>`,
     };
@@ -191,12 +206,16 @@ export class EmailIntegrationService {
     key: string,
   ): string | undefined {
     const value = payload?.[key];
-    return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+    return typeof value === 'string' && value.trim().length > 0
+      ? value
+      : undefined;
   }
 
   private async extractSendgridError(response: Response): Promise<string> {
     try {
-      const parsed = (await response.json()) as { errors?: Array<{ message?: string }> };
+      const parsed = (await response.json()) as {
+        errors?: Array<{ message?: string }>;
+      };
       const message = parsed.errors?.[0]?.message;
       if (message) {
         return message;
@@ -226,7 +245,10 @@ export class EmailIntegrationService {
     return value as unknown as Prisma.InputJsonValue;
   }
 
-  private async failDelivery(deliveryId: string, errorMessage: string): Promise<void> {
+  private async failDelivery(
+    deliveryId: string,
+    errorMessage: string,
+  ): Promise<void> {
     await this.prisma.emailDelivery.update({
       where: { id: deliveryId },
       data: {

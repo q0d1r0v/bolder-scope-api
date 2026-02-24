@@ -4,7 +4,15 @@ import { StorageIntegrationModule } from '@/modules/integrations/storage/storage
 import { VoiceIntegrationModule } from '@/modules/integrations/voice/voice-integration.module';
 
 @Module({
-  imports: [EmailIntegrationModule, StorageIntegrationModule, VoiceIntegrationModule],
-  exports: [EmailIntegrationModule, StorageIntegrationModule, VoiceIntegrationModule],
+  imports: [
+    EmailIntegrationModule,
+    StorageIntegrationModule,
+    VoiceIntegrationModule,
+  ],
+  exports: [
+    EmailIntegrationModule,
+    StorageIntegrationModule,
+    VoiceIntegrationModule,
+  ],
 })
 export class IntegrationsModule {}

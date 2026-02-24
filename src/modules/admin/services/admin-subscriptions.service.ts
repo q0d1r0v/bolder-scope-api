@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { buildPrismaPagination, paginate } from '@/common/helpers/pagination.helper';
+import {
+  buildPrismaPagination,
+  paginate,
+} from '@/common/helpers/pagination.helper';
 import { AdminSubscriptionsQueryDto } from '@/modules/admin/dto/admin-subscriptions.dto';
 
 @Injectable()
@@ -69,7 +72,13 @@ export class AdminSubscriptionsService {
         createdAt: true,
         updatedAt: true,
         organization: {
-          select: { id: true, name: true, slug: true, type: true, status: true },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            type: true,
+            status: true,
+          },
         },
         invoices: {
           select: {

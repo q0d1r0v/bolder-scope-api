@@ -1,4 +1,10 @@
-import { IsEnum, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export enum RequirementStatusInput {
   DRAFT = 'DRAFT',

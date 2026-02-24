@@ -31,7 +31,9 @@ export class AdminAiRunsController {
 
   @Get(':aiRunId')
   @ApiOperation({ summary: 'Get AI run details (admin)' })
-  @ApiOkResponse({ description: 'AI run details with organization, project, and initiator' })
+  @ApiOkResponse({
+    description: 'AI run details with organization, project, and initiator',
+  })
   @ApiNotFoundResponse({ description: 'AI run not found' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   @ApiForbiddenResponse({ description: 'Super admin access required' })

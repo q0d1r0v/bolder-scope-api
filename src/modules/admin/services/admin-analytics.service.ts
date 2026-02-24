@@ -25,10 +25,16 @@ export class AdminAnalyticsService {
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: UserStatus.ACTIVE } }),
       this.prisma.organization.count(),
-      this.prisma.organization.count({ where: { type: OrganizationType.AGENCY } }),
-      this.prisma.organization.count({ where: { type: OrganizationType.CLIENT } }),
+      this.prisma.organization.count({
+        where: { type: OrganizationType.AGENCY },
+      }),
+      this.prisma.organization.count({
+        where: { type: OrganizationType.CLIENT },
+      }),
       this.prisma.project.count(),
-      this.prisma.subscription.count({ where: { status: SubscriptionStatus.ACTIVE } }),
+      this.prisma.subscription.count({
+        where: { status: SubscriptionStatus.ACTIVE },
+      }),
       this.prisma.billingInvoice.aggregate({ _sum: { amountPaid: true } }),
     ]);
 
@@ -106,43 +112,44 @@ export class AdminAnalyticsService {
   }
 
   async getRecentActivity() {
-    const [recentUsers, recentOrganizations, recentProjects] = await Promise.all([
-      this.prisma.user.findMany({
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          status: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      this.prisma.organization.findMany({
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          type: true,
-          status: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      this.prisma.project.findMany({
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          stage: true,
-          createdAt: true,
-          organization: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-    ]);
+    const [recentUsers, recentOrganizations, recentProjects] =
+      await Promise.all([
+        this.prisma.user.findMany({
+          select: {
+            id: true,
+            email: true,
+            fullName: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.organization.findMany({
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.project.findMany({
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            stage: true,
+            createdAt: true,
+            organization: { select: { id: true, name: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+      ]);
 
     return {
       recentUsers,

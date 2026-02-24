@@ -13,7 +13,9 @@ export type CurrentUserShape = {
 
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): CurrentUserShape | undefined => {
-    const request = ctx.switchToHttp().getRequest<{ user?: CurrentUserShape }>();
+    const request = ctx
+      .switchToHttp()
+      .getRequest<{ user?: CurrentUserShape }>();
     return request.user;
   },
 );

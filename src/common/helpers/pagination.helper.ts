@@ -12,7 +12,11 @@ export type PaginatedResult<T> = {
   };
 };
 
-export function paginate<T>(data: T[], total: number, query: PaginationQueryDto): PaginatedResult<T> {
+export function paginate<T>(
+  data: T[],
+  total: number,
+  query: PaginationQueryDto,
+): PaginatedResult<T> {
   const totalPages = Math.ceil(total / query.limit);
   return {
     data,
@@ -27,7 +31,10 @@ export function paginate<T>(data: T[], total: number, query: PaginationQueryDto)
   };
 }
 
-export function buildPrismaPagination(query: PaginationQueryDto): { skip: number; take: number } {
+export function buildPrismaPagination(query: PaginationQueryDto): {
+  skip: number;
+  take: number;
+} {
   return {
     skip: (query.page - 1) * query.limit,
     take: query.limit,

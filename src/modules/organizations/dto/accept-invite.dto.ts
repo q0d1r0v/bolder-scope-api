@@ -29,7 +29,9 @@ export class AcceptInviteDto {
     maxLength: 120,
     description: 'Full name of the user',
   })
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @MinLength(2)
   @MaxLength(120)

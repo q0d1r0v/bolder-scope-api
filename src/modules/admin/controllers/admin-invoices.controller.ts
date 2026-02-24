@@ -31,7 +31,9 @@ export class AdminInvoicesController {
 
   @Get(':invoiceId')
   @ApiOperation({ summary: 'Get invoice details (admin)' })
-  @ApiOkResponse({ description: 'Invoice details with organization and subscription' })
+  @ApiOkResponse({
+    description: 'Invoice details with organization and subscription',
+  })
   @ApiNotFoundResponse({ description: 'Invoice not found' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   @ApiForbiddenResponse({ description: 'Super admin access required' })

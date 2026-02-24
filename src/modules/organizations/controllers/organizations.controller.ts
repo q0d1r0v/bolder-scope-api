@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -32,9 +40,14 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Create a new organization' })
   @ApiCreatedResponse({ description: 'Organization created successfully' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiConflictResponse({ description: 'Organization with this slug already exists' })
+  @ApiConflictResponse({
+    description: 'Organization with this slug already exists',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  create(@Body() payload: CreateOrganizationDto, @CurrentUser() user: CurrentUserShape) {
+  create(
+    @Body() payload: CreateOrganizationDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
     return this.organizationsService.create(payload, user.userId);
   }
 
@@ -42,7 +55,10 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'List organizations the current user belongs to' })
   @ApiOkResponse({ description: 'Paginated list of organizations' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: CurrentUserShape) {
+  findAll(
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
     return this.organizationsService.findAll(user.userId, query);
   }
 
@@ -68,7 +84,11 @@ export class OrganizationsController {
     @Query() query: PaginationQueryDto,
     @CurrentUser() user: CurrentUserShape,
   ) {
-    return this.organizationsService.getMembers(organizationId, user.userId, query);
+    return this.organizationsService.getMembers(
+      organizationId,
+      user.userId,
+      query,
+    );
   }
 
   @Post(':organizationId/invite')
@@ -76,20 +96,30 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Invite a developer or client to the organization' })
   @ApiCreatedResponse({ description: 'Invitation sent successfully' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
-  @ApiConflictResponse({ description: 'User is already a member or invite is pending' })
-  @ApiForbiddenResponse({ description: 'Insufficient role (requires OWNER or ADMIN)' })
+  @ApiConflictResponse({
+    description: 'User is already a member or invite is pending',
+  })
+  @ApiForbiddenResponse({
+    description: 'Insufficient role (requires OWNER or ADMIN)',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   inviteMember(
     @Param('organizationId') organizationId: string,
     @Body() payload: InviteMemberDto,
     @CurrentUser() user: CurrentUserShape,
   ) {
-    return this.organizationsService.inviteMember(organizationId, user.userId, payload);
+    return this.organizationsService.inviteMember(
+      organizationId,
+      user.userId,
+      payload,
+    );
   }
 
   @Public()
   @Post('accept-invite')
-  @ApiOperation({ summary: 'Accept an organization invite (public — no auth required)' })
+  @ApiOperation({
+    summary: 'Accept an organization invite (public — no auth required)',
+  })
   @ApiOkResponse({ description: 'Invitation accepted successfully' })
   @ApiBadRequestResponse({ description: 'Invalid or expired invite token' })
   acceptInvite(@Body() payload: AcceptInviteDto) {
@@ -101,13 +131,19 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Revoke a pending invitation' })
   @ApiOkResponse({ description: 'Invitation revoked successfully' })
   @ApiNotFoundResponse({ description: 'Pending invite not found' })
-  @ApiForbiddenResponse({ description: 'Insufficient role (requires OWNER or ADMIN)' })
+  @ApiForbiddenResponse({
+    description: 'Insufficient role (requires OWNER or ADMIN)',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   revokeInvite(
     @Param('organizationId') organizationId: string,
     @Param('memberId') memberId: string,
     @CurrentUser() user: CurrentUserShape,
   ) {
-    return this.organizationsService.revokeInvite(organizationId, memberId, user.userId);
+    return this.organizationsService.revokeInvite(
+      organizationId,
+      memberId,
+      user.userId,
+    );
   }
 }

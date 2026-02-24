@@ -13,10 +13,16 @@ import { promisify } from 'node:util';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EmailIntegrationService } from '@/modules/integrations/email/services/email-integration.service';
 import type { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
-import { buildPrismaPagination, paginate } from '@/common/helpers/pagination.helper';
+import {
+  buildPrismaPagination,
+  paginate,
+} from '@/common/helpers/pagination.helper';
 import { AcceptInviteDto } from '@/modules/organizations/dto/accept-invite.dto';
 import { CreateOrganizationDto } from '@/modules/organizations/dto/create-organization.dto';
-import { InviteMemberDto, OrganizationInviteRole } from '@/modules/organizations/dto/invite-member.dto';
+import {
+  InviteMemberDto,
+  OrganizationInviteRole,
+} from '@/modules/organizations/dto/invite-member.dto';
 
 const scryptAsync = promisify(scryptCallback);
 const PASSWORD_HASH_KEY_LENGTH = 64;
@@ -31,7 +37,10 @@ export class OrganizationsService {
     private readonly configService: ConfigService,
     private readonly emailIntegrationService: EmailIntegrationService,
   ) {
-    this.appUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
+    this.appUrl = this.configService.get<string>(
+      'APP_URL',
+      'http://localhost:3000',
+    );
   }
 
   async create(payload: CreateOrganizationDto, userId: string) {
@@ -144,7 +153,11 @@ export class OrganizationsService {
     };
   }
 
-  async getMembers(organizationId: string, userId: string, query: PaginationQueryDto) {
+  async getMembers(
+    organizationId: string,
+    userId: string,
+    query: PaginationQueryDto,
+  ) {
     await this.requireMembership(organizationId, userId);
 
     const where = { organizationId };
@@ -178,11 +191,16 @@ export class OrganizationsService {
     return paginate(members, total, query);
   }
 
-  async inviteMember(organizationId: string, inviterUserId: string, payload: InviteMemberDto) {
-    const inviterMembership = await this.requireRole(organizationId, inviterUserId, [
-      OrganizationRole.OWNER,
-      OrganizationRole.ADMIN,
-    ]);
+  async inviteMember(
+    organizationId: string,
+    inviterUserId: string,
+    payload: InviteMemberDto,
+  ) {
+    const inviterMembership = await this.requireRole(
+      organizationId,
+      inviterUserId,
+      [OrganizationRole.OWNER, OrganizationRole.ADMIN],
+    );
 
     const email = payload.email.trim().toLowerCase();
     const orgRole = this.mapInviteRole(payload.role);
@@ -190,20 +208,21 @@ export class OrganizationsService {
     const existingMember = await this.prisma.organizationMember.findFirst({
       where: {
         organizationId,
-        OR: [
-          { user: { email } },
-          { inviteEmail: email },
-        ],
+        OR: [{ user: { email } }, { inviteEmail: email }],
       },
       select: { id: true, inviteStatus: true },
     });
 
     if (existingMember) {
       if (existingMember.inviteStatus === InviteStatus.ACCEPTED) {
-        throw new ConflictException('This user is already a member of this organization');
+        throw new ConflictException(
+          'This user is already a member of this organization',
+        );
       }
       if (existingMember.inviteStatus === InviteStatus.PENDING) {
-        throw new ConflictException('An invite is already pending for this email');
+        throw new ConflictException(
+          'An invite is already pending for this email',
+        );
       }
     }
 
@@ -273,7 +292,9 @@ export class OrganizationsService {
         inviteStatus: true,
         inviteEmail: true,
         role: true,
-        organization: { select: { id: true, name: true, slug: true, type: true } },
+        organization: {
+          select: { id: true, name: true, slug: true, type: true },
+        },
       },
     });
 
@@ -282,14 +303,18 @@ export class OrganizationsService {
     }
 
     if (member.inviteStatus !== InviteStatus.PENDING) {
-      throw new BadRequestException('This invitation has already been used or revoked');
+      throw new BadRequestException(
+        'This invitation has already been used or revoked',
+      );
     }
 
     const passwordHash = await this.hashPassword(payload.password);
     const fullName = payload.fullName.trim();
 
     if (fullName.length < 2) {
-      throw new BadRequestException('Full name must contain at least 2 visible characters');
+      throw new BadRequestException(
+        'Full name must contain at least 2 visible characters',
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -327,7 +352,11 @@ export class OrganizationsService {
     ]);
 
     const member = await this.prisma.organizationMember.findFirst({
-      where: { id: memberId, organizationId, inviteStatus: InviteStatus.PENDING },
+      where: {
+        id: memberId,
+        organizationId,
+        inviteStatus: InviteStatus.PENDING,
+      },
       select: { id: true },
     });
 
@@ -378,7 +407,9 @@ export class OrganizationsService {
     const membership = await this.requireMembership(organizationId, userId);
 
     if (!allowedRoles.includes(membership.role)) {
-      throw new ForbiddenException('You do not have the required role for this action');
+      throw new ForbiddenException(
+        'You do not have the required role for this action',
+      );
     }
 
     return membership;
@@ -431,7 +462,11 @@ export class OrganizationsService {
 
   private async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16).toString('hex');
-    const derivedKey = (await scryptAsync(password, salt, PASSWORD_HASH_KEY_LENGTH)) as Buffer;
+    const derivedKey = (await scryptAsync(
+      password,
+      salt,
+      PASSWORD_HASH_KEY_LENGTH,
+    )) as Buffer;
     return `scrypt$${salt}$${derivedKey.toString('hex')}`;
   }
 

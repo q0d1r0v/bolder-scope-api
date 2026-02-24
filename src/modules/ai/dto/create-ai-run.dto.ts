@@ -13,6 +13,8 @@ export enum AiTaskTypeInput {
   TIMELINE_ESTIMATION = 'TIMELINE_ESTIMATION',
   COST_ESTIMATION = 'COST_ESTIMATION',
   TECH_STACK_RECOMMENDATION = 'TECH_STACK_RECOMMENDATION',
+  USER_FLOW_GENERATION = 'USER_FLOW_GENERATION',
+  WIREFRAME_GENERATION = 'WIREFRAME_GENERATION',
 }
 
 export class CreateAiRunDto {
@@ -33,4 +35,12 @@ export class CreateAiRunDto {
   @IsOptional()
   @IsUUID()
   estimateSnapshotId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  userFlowSnapshotId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  wireframeSnapshotId?: string;
 }

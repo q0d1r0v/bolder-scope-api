@@ -14,7 +14,9 @@ import { VoiceIntegrationService } from '@/modules/integrations/voice/services/v
 @ApiBearerAuth('bearer')
 @Controller('integrations/voice')
 export class VoiceIntegrationController {
-  constructor(private readonly voiceIntegrationService: VoiceIntegrationService) {}
+  constructor(
+    private readonly voiceIntegrationService: VoiceIntegrationService,
+  ) {}
 
   @Post('transcribe')
   @ApiOperation({ summary: 'Transcribe a voice file using AI' })

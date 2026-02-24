@@ -3,12 +3,15 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import type { CurrentUserShape } from '@/common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { GenerateTechStackDto } from '@/modules/tech-stack/dto/generate-tech-stack.dto';
 import { TechStackService } from '@/modules/tech-stack/services/tech-stack.service';
@@ -20,20 +23,33 @@ export class TechStackController {
   constructor(private readonly techStackService: TechStackService) {}
 
   @Post('generate')
-  @ApiOperation({ summary: 'Generate tech stack recommendations for a project' })
+  @ApiOperation({
+    summary: 'Generate tech stack recommendations for a project',
+  })
   @ApiCreatedResponse({ description: 'Tech stack recommendation generated' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  generate(@Body() payload: GenerateTechStackDto) {
-    return this.techStackService.generate(payload);
+  generate(
+    @Body() payload: GenerateTechStackDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.techStackService.generate(payload, user);
   }
 
   @Get('project/:projectId')
   @ApiOperation({ summary: 'List tech stack recommendations for a project' })
-  @ApiOkResponse({ description: 'Paginated list of tech stack recommendations' })
+  @ApiOkResponse({
+    description: 'Paginated list of tech stack recommendations',
+  })
   @ApiNotFoundResponse({ description: 'Project not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  listByProject(@Param('projectId') projectId: string, @Query() query: PaginationQueryDto) {
-    return this.techStackService.listByProject(projectId, query);
+  listByProject(
+    @Param('projectId') projectId: string,
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.techStackService.listByProject(projectId, query, user);
   }
 }

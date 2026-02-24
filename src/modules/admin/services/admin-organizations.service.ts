@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { buildPrismaPagination, paginate } from '@/common/helpers/pagination.helper';
-import { AdminOrganizationsQueryDto, AdminUpdateOrganizationDto } from '@/modules/admin/dto/admin-organizations.dto';
+import {
+  buildPrismaPagination,
+  paginate,
+} from '@/common/helpers/pagination.helper';
+import {
+  AdminOrganizationsQueryDto,
+  AdminUpdateOrganizationDto,
+} from '@/modules/admin/dto/admin-organizations.dto';
 import type { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 
 @Injectable()

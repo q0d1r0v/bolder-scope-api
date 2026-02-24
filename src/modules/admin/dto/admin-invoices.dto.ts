@@ -4,7 +4,11 @@ import { InvoiceStatus } from '@prisma/client';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 
 export class AdminInvoicesQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional({ enum: InvoiceStatus, enumName: 'InvoiceStatus', description: 'Filter by invoice status' })
+  @ApiPropertyOptional({
+    enum: InvoiceStatus,
+    enumName: 'InvoiceStatus',
+    description: 'Filter by invoice status',
+  })
   @IsOptional()
   @IsEnum(InvoiceStatus)
   status?: InvoiceStatus;

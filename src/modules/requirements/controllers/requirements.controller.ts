@@ -1,14 +1,25 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import type { CurrentUserShape } from '@/common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { GenerateRequirementDto } from '@/modules/requirements/dto/generate-requirement.dto';
 import { UpdateRequirementDto } from '@/modules/requirements/dto/update-requirement.dto';
@@ -21,12 +32,18 @@ export class RequirementsController {
   constructor(private readonly requirementsService: RequirementsService) {}
 
   @Post('generate')
-  @ApiOperation({ summary: 'Generate structured requirements from project inputs' })
+  @ApiOperation({
+    summary: 'Generate structured requirements from project inputs',
+  })
   @ApiCreatedResponse({ description: 'Requirement snapshot generated' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  generate(@Body() payload: GenerateRequirementDto) {
-    return this.requirementsService.generate(payload);
+  generate(
+    @Body() payload: GenerateRequirementDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.requirementsService.generate(payload, user);
   }
 
   @Patch(':requirementId')
@@ -38,16 +55,22 @@ export class RequirementsController {
   update(
     @Param('requirementId') requirementId: string,
     @Body() payload: UpdateRequirementDto,
+    @CurrentUser() user: CurrentUserShape,
   ) {
-    return this.requirementsService.update(requirementId, payload);
+    return this.requirementsService.update(requirementId, payload, user);
   }
 
   @Get('project/:projectId')
   @ApiOperation({ summary: 'List requirement snapshots for a project' })
   @ApiOkResponse({ description: 'Paginated list of requirement snapshots' })
   @ApiNotFoundResponse({ description: 'Project not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  listByProject(@Param('projectId') projectId: string, @Query() query: PaginationQueryDto) {
-    return this.requirementsService.listByProject(projectId, query);
+  listByProject(
+    @Param('projectId') projectId: string,
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.requirementsService.listByProject(projectId, query, user);
   }
 }

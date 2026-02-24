@@ -6,8 +6,20 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OrganizationRole, OrganizationType, Prisma, SystemRole, UserStatus } from '@prisma/client';
-import { createHmac, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import {
+  OrganizationRole,
+  OrganizationType,
+  Prisma,
+  SystemRole,
+  UserStatus,
+} from '@prisma/client';
+import {
+  createHmac,
+  randomBytes,
+  randomUUID,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+} from 'node:crypto';
 import { promisify } from 'node:util';
 import { EmailIntegrationService } from '@/modules/integrations/email/services/email-integration.service';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -18,7 +30,8 @@ import { VerifyEmailDto } from '@/modules/auth/dto/verify-email.dto';
 
 const scryptAsync = promisify(scryptCallback);
 const PASSWORD_HASH_KEY_LENGTH = 64;
-const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type JwtPayload = {
   sub: string;
@@ -82,8 +95,14 @@ export class AuthService {
       'JWT_REFRESH_SECRET',
       'dev_refresh_secret_change_me_please',
     );
-    this.accessTokenTtlSeconds = this.configService.get<number>('JWT_ACCESS_TTL_SECONDS', 900);
-    this.refreshTokenTtlSeconds = this.configService.get<number>('JWT_REFRESH_TTL_SECONDS', 2592000);
+    this.accessTokenTtlSeconds = this.configService.get<number>(
+      'JWT_ACCESS_TTL_SECONDS',
+      900,
+    );
+    this.refreshTokenTtlSeconds = this.configService.get<number>(
+      'JWT_REFRESH_TTL_SECONDS',
+      2592000,
+    );
     this.emailVerificationSecret = this.configService.get<string>(
       'JWT_EMAIL_VERIFICATION_SECRET',
       this.accessTokenSecret,
@@ -93,8 +112,13 @@ export class AuthService {
       86400,
     );
 
-    const configuredVerificationBaseUrl = this.configService.get<string>('EMAIL_VERIFICATION_URL');
-    const appUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
+    const configuredVerificationBaseUrl = this.configService.get<string>(
+      'EMAIL_VERIFICATION_URL',
+    );
+    const appUrl = this.configService.get<string>(
+      'APP_URL',
+      'http://localhost:3000',
+    );
     this.emailVerificationBaseUrl = this.normalizeVerificationBaseUrl(
       configuredVerificationBaseUrl ?? `${appUrl}/api/v1/auth/verify-email`,
     );
@@ -112,67 +136,80 @@ export class AuthService {
     );
 
     if (fullName.length < 2) {
-      throw new BadRequestException('Full name must contain at least 2 visible characters');
+      throw new BadRequestException(
+        'Full name must contain at least 2 visible characters',
+      );
     }
 
     const passwordHash = await this.hashPassword(payload.password);
 
     try {
-      const registrationResult = await this.prisma.$transaction(async (transactionClient) => {
-        const now = new Date();
-        const user = await transactionClient.user.create({
-          data: {
-            email,
-            fullName,
-            passwordHash,
-            lastLoginAt: now,
-          },
-          select: {
-            id: true,
-            email: true,
-            fullName: true,
-            systemRole: true,
-            status: true,
-            isEmailVerified: true,
-            lastLoginAt: true,
-          },
-        });
+      const registrationResult = await this.prisma.$transaction(
+        async (transactionClient) => {
+          const now = new Date();
+          const user = await transactionClient.user.create({
+            data: {
+              email,
+              fullName,
+              passwordHash,
+              lastLoginAt: now,
+            },
+            select: {
+              id: true,
+              email: true,
+              fullName: true,
+              systemRole: true,
+              status: true,
+              isEmailVerified: true,
+              lastLoginAt: true,
+            },
+          });
 
-        const organization = await this.createOrganizationForUser(transactionClient, {
-          email,
-          organizationName,
-          organizationType,
-        });
-        await transactionClient.organizationMember.create({
-          data: {
+          const organization = await this.createOrganizationForUser(
+            transactionClient,
+            {
+              email,
+              organizationName,
+              organizationType,
+            },
+          );
+          await transactionClient.organizationMember.create({
+            data: {
+              organizationId: organization.id,
+              userId: user.id,
+              role: organizationRole,
+            },
+          });
+
+          const context: AuthMembershipContext = {
             organizationId: organization.id,
-            userId: user.id,
-            role: organizationRole,
-          },
-        });
+            organizationName: organization.name,
+            organizationSlug: organization.slug,
+            organizationType: organization.type,
+            organizationRole,
+          };
 
-        const context: AuthMembershipContext = {
-          organizationId: organization.id,
-          organizationName: organization.name,
-          organizationSlug: organization.slug,
-          organizationType: organization.type,
-          organizationRole,
-        };
+          const authResponse = await this.createSessionAndBuildResponse(
+            transactionClient,
+            user,
+            context,
+          );
 
-        const authResponse = await this.createSessionAndBuildResponse(transactionClient, user, context);
+          return {
+            authResponse,
+            verificationEmailPayload: {
+              userId: user.id,
+              toEmail: user.email,
+              fullName: user.fullName,
+              organizationId: organization.id,
+            },
+          };
+        },
+      );
 
-        return {
-          authResponse,
-          verificationEmailPayload: {
-            userId: user.id,
-            toEmail: user.email,
-            fullName: user.fullName,
-            organizationId: organization.id,
-          },
-        };
-      });
-
-      await this.sendVerificationEmailBestEffort(registrationResult.verificationEmailPayload);
+      await this.sendVerificationEmailBestEffort(
+        registrationResult.verificationEmailPayload,
+      );
 
       return registrationResult.authResponse;
     } catch (error) {
@@ -211,7 +248,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email verification token');
     }
 
-    if (this.normalizeEmail(user.email) !== this.normalizeEmail(tokenPayload.email)) {
+    if (
+      this.normalizeEmail(user.email) !==
+      this.normalizeEmail(tokenPayload.email)
+    ) {
       throw new UnauthorizedException('Invalid email verification token');
     }
 
@@ -245,7 +285,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const passwordMatches = await this.verifyPassword(payload.password, user.passwordHash);
+    const passwordMatches = await this.verifyPassword(
+      payload.password,
+      user.passwordHash,
+    );
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -305,7 +348,9 @@ export class AuthService {
     }
 
     const now = new Date();
-    const nextRefreshExpiresAt = new Date(now.getTime() + this.refreshTokenTtlSeconds * 1000);
+    const nextRefreshExpiresAt = new Date(
+      now.getTime() + this.refreshTokenTtlSeconds * 1000,
+    );
     const nextRefreshToken = this.generateRefreshToken(session.id);
     const nextRefreshTokenHash = this.hashRefreshToken(nextRefreshToken);
 
@@ -317,8 +362,18 @@ export class AuthService {
       },
     });
 
-    const activeMembership = await this.findPrimaryMembershipByUserId(this.prisma, session.user.id);
-    const accessToken = this.createAccessToken(session.user.id, session.user.email, now, activeMembership, session.user.systemRole, session.user.isEmailVerified);
+    const activeMembership = await this.findPrimaryMembershipByUserId(
+      this.prisma,
+      session.user.id,
+    );
+    const accessToken = this.createAccessToken(
+      session.user.id,
+      session.user.email,
+      now,
+      activeMembership,
+      session.user.systemRole,
+      session.user.isEmailVerified,
+    );
 
     return this.buildAuthResponse({
       user: session.user,
@@ -363,7 +418,10 @@ export class AuthService {
   }
 
   verifyAccessToken(token: string): JwtPayload {
-    const payload = this.verifySignedJwt<JwtPayload>(token, this.accessTokenSecret);
+    const payload = this.verifySignedJwt<JwtPayload>(
+      token,
+      this.accessTokenSecret,
+    );
 
     if (payload.type !== 'access') {
       throw new UnauthorizedException('Invalid access token');
@@ -378,11 +436,15 @@ export class AuthService {
     context?: AuthMembershipContext | null,
   ) {
     const now = new Date();
-    const refreshTokenExpiresAt = new Date(now.getTime() + this.refreshTokenTtlSeconds * 1000);
+    const refreshTokenExpiresAt = new Date(
+      now.getTime() + this.refreshTokenTtlSeconds * 1000,
+    );
     const sessionId = randomUUID();
     const refreshToken = this.generateRefreshToken(sessionId);
     const refreshTokenHash = this.hashRefreshToken(refreshToken);
-    const activeMembership = context ?? (await this.findPrimaryMembershipByUserId(transactionClient, user.id));
+    const activeMembership =
+      context ??
+      (await this.findPrimaryMembershipByUserId(transactionClient, user.id));
 
     await transactionClient.authSession.create({
       data: {
@@ -393,7 +455,14 @@ export class AuthService {
       },
     });
 
-    const accessToken = this.createAccessToken(user.id, user.email, now, activeMembership, user.systemRole, user.isEmailVerified);
+    const accessToken = this.createAccessToken(
+      user.id,
+      user.email,
+      now,
+      activeMembership,
+      user.systemRole,
+      user.isEmailVerified,
+    );
 
     return this.buildAuthResponse({
       user,
@@ -463,7 +532,10 @@ export class AuthService {
     };
   }
 
-  private signJwt(payload: JwtPayload | EmailVerificationJwtPayload, secret: string): string {
+  private signJwt(
+    payload: JwtPayload | EmailVerificationJwtPayload,
+    secret: string,
+  ): string {
     const header = {
       alg: 'HS256',
       typ: 'JWT',
@@ -510,7 +582,9 @@ export class AuthService {
       payload.toEmail,
       issuedAt,
     );
-    const verificationUrl = this.buildEmailVerificationUrl(verificationToken.token);
+    const verificationUrl = this.buildEmailVerificationUrl(
+      verificationToken.token,
+    );
     const expiresAtIso = verificationToken.expiresAt.toISOString();
     const subject = 'Verify your email to activate Bolder Scope';
     const text = [
@@ -552,9 +626,19 @@ export class AuthService {
     return verificationUrl.toString();
   }
 
-  private verifySignedJwt<T extends { exp: number; iat: number }>(token: string, secret: string): T {
-    const [encodedHeader, encodedPayload, receivedSignature, ...rest] = token.trim().split('.');
-    if (!encodedHeader || !encodedPayload || !receivedSignature || rest.length > 0) {
+  private verifySignedJwt<T extends { exp: number; iat: number }>(
+    token: string,
+    secret: string,
+  ): T {
+    const [encodedHeader, encodedPayload, receivedSignature, ...rest] = token
+      .trim()
+      .split('.');
+    if (
+      !encodedHeader ||
+      !encodedPayload ||
+      !receivedSignature ||
+      rest.length > 0
+    ) {
       throw new UnauthorizedException('Invalid email verification token');
     }
 
@@ -570,7 +654,10 @@ export class AuthService {
     let payload: T;
 
     try {
-      header = JSON.parse(this.decodeBase64Url(encodedHeader)) as { alg?: string; typ?: string };
+      header = JSON.parse(this.decodeBase64Url(encodedHeader)) as {
+        alg?: string;
+        typ?: string;
+      };
       payload = JSON.parse(this.decodeBase64Url(encodedPayload)) as T;
     } catch {
       throw new UnauthorizedException('Invalid email verification token');
@@ -601,11 +688,15 @@ export class AuthService {
   }
 
   private resolveOrganizationType(role: AuthAccountRole): OrganizationType {
-    return role === AuthAccountRole.CLIENT ? OrganizationType.CLIENT : OrganizationType.AGENCY;
+    return role === AuthAccountRole.CLIENT
+      ? OrganizationType.CLIENT
+      : OrganizationType.AGENCY;
   }
 
   private resolveOrganizationRole(role: AuthAccountRole): OrganizationRole {
-    return role === AuthAccountRole.CLIENT ? OrganizationRole.CLIENT : OrganizationRole.OWNER;
+    return role === AuthAccountRole.CLIENT
+      ? OrganizationRole.CLIENT
+      : OrganizationRole.OWNER;
   }
 
   private resolveOrganizationName(
@@ -617,7 +708,9 @@ export class AuthService {
       return providedOrganizationName.trim();
     }
 
-    return role === AuthAccountRole.CLIENT ? `${fullName} Client Team` : `${fullName} Agency`;
+    return role === AuthAccountRole.CLIENT
+      ? `${fullName} Client Team`
+      : `${fullName} Agency`;
   }
 
   private async createOrganizationForUser(
@@ -629,7 +722,10 @@ export class AuthService {
     },
   ) {
     const baseSlug = this.slugify(payload.organizationName);
-    const slug = await this.generateUniqueOrganizationSlug(transactionClient, baseSlug);
+    const slug = await this.generateUniqueOrganizationSlug(
+      transactionClient,
+      baseSlug,
+    );
 
     return transactionClient.organization.create({
       data: {
@@ -739,7 +835,9 @@ export class AuthService {
   }
 
   private hashRefreshToken(refreshToken: string): string {
-    return createHmac('sha256', this.refreshTokenSecret).update(refreshToken).digest('hex');
+    return createHmac('sha256', this.refreshTokenSecret)
+      .update(refreshToken)
+      .digest('hex');
   }
 
   private parseRefreshToken(refreshToken: string): { sessionId: string } {
@@ -751,7 +849,9 @@ export class AuthService {
     return tokenParts;
   }
 
-  private tryParseRefreshToken(refreshToken: string): { sessionId: string } | null {
+  private tryParseRefreshToken(
+    refreshToken: string,
+  ): { sessionId: string } | null {
     const [sessionId, tokenSecret, ...rest] = refreshToken.trim().split('.');
 
     if (!sessionId || !tokenSecret || rest.length > 0) {
@@ -775,19 +875,30 @@ export class AuthService {
 
   private async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16).toString('hex');
-    const derivedKey = (await scryptAsync(password, salt, PASSWORD_HASH_KEY_LENGTH)) as Buffer;
+    const derivedKey = (await scryptAsync(
+      password,
+      salt,
+      PASSWORD_HASH_KEY_LENGTH,
+    )) as Buffer;
 
     return `scrypt$${salt}$${derivedKey.toString('hex')}`;
   }
 
-  private async verifyPassword(password: string, passwordHash: string): Promise<boolean> {
+  private async verifyPassword(
+    password: string,
+    passwordHash: string,
+  ): Promise<boolean> {
     const [algorithm, salt, storedHashHex] = passwordHash.split('$');
     if (algorithm !== 'scrypt' || !salt || !storedHashHex) {
       return false;
     }
 
     const storedHash = Buffer.from(storedHashHex, 'hex');
-    const derivedKey = (await scryptAsync(password, salt, PASSWORD_HASH_KEY_LENGTH)) as Buffer;
+    const derivedKey = (await scryptAsync(
+      password,
+      salt,
+      PASSWORD_HASH_KEY_LENGTH,
+    )) as Buffer;
 
     if (storedHash.length !== derivedKey.length) {
       return false;

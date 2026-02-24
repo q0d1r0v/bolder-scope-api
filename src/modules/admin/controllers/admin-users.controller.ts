@@ -10,7 +10,10 @@ import {
 } from '@nestjs/swagger';
 import { SystemRole } from '@prisma/client';
 import { SystemRoles } from '@/common/decorators/system-roles.decorator';
-import { AdminUpdateUserDto, AdminUsersQueryDto } from '@/modules/admin/dto/admin-users.dto';
+import {
+  AdminUpdateUserDto,
+  AdminUsersQueryDto,
+} from '@/modules/admin/dto/admin-users.dto';
 import { AdminUsersService } from '@/modules/admin/services/admin-users.service';
 
 @ApiTags('Admin - Users')

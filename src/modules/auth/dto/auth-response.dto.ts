@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { OrganizationRole, OrganizationType, SystemRole, UserStatus } from '@prisma/client';
+import {
+  OrganizationRole,
+  OrganizationType,
+  SystemRole,
+  UserStatus,
+} from '@prisma/client';
 
 class AuthUserDto {
   @ApiProperty({
@@ -74,7 +79,8 @@ class AuthTokensDto {
   accessTokenExpiresAt!: string;
 
   @ApiProperty({
-    example: 'f47ac10b-58cc-4372-a567-0e02b2c3d479.uXo3QxUkPKW4fFJHk1fQb7j9P5r1w2Qxw5nMg7xQhR2',
+    example:
+      'f47ac10b-58cc-4372-a567-0e02b2c3d479.uXo3QxUkPKW4fFJHk1fQb7j9P5r1w2Qxw5nMg7xQhR2',
     description: 'Long-lived refresh token',
   })
   refreshToken!: string;

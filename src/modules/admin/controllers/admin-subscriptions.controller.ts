@@ -18,7 +18,9 @@ import { AdminSubscriptionsService } from '@/modules/admin/services/admin-subscr
 @SystemRoles(SystemRole.SUPER_ADMIN)
 @Controller('admin/subscriptions')
 export class AdminSubscriptionsController {
-  constructor(private readonly adminSubscriptionsService: AdminSubscriptionsService) {}
+  constructor(
+    private readonly adminSubscriptionsService: AdminSubscriptionsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all subscriptions (admin)' })

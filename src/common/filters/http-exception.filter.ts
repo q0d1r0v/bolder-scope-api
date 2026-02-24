@@ -1,4 +1,11 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  Catch,
+  ExceptionFilter,
+  HttpException,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 
 @Catch()
@@ -47,18 +54,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
 
       const responseObj = exceptionResponse as Record<string, unknown>;
-      const message = (responseObj.message as string | string[]) ?? exception.message;
-      const error = (responseObj.error as string) ?? HttpStatus[statusCode] ?? 'Error';
+      const message =
+        (responseObj.message as string | string[]) ?? exception.message;
+      const error =
+        (responseObj.error as string) ?? HttpStatus[statusCode] ?? 'Error';
 
       return { statusCode, error, message };
     }
 
-    const isProduction = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production';
+    const isProduction =
+      (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production';
 
     return {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
       error: 'Internal Server Error',
-      message: isProduction ? 'An unexpected error occurred' : this.getExceptionMessage(exception),
+      message: isProduction
+        ? 'An unexpected error occurred'
+        : this.getExceptionMessage(exception),
     };
   }
 

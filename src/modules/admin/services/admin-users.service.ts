@@ -1,8 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { buildPrismaPagination, paginate } from '@/common/helpers/pagination.helper';
-import { AdminUpdateUserDto, AdminUsersQueryDto } from '@/modules/admin/dto/admin-users.dto';
+import {
+  buildPrismaPagination,
+  paginate,
+} from '@/common/helpers/pagination.helper';
+import {
+  AdminUpdateUserDto,
+  AdminUsersQueryDto,
+} from '@/modules/admin/dto/admin-users.dto';
 
 @Injectable()
 export class AdminUsersService {
@@ -140,7 +146,9 @@ export class AdminUsersService {
       where: { id: userId },
       data: {
         ...(payload.status !== undefined && { status: payload.status }),
-        ...(payload.systemRole !== undefined && { systemRole: payload.systemRole }),
+        ...(payload.systemRole !== undefined && {
+          systemRole: payload.systemRole,
+        }),
       },
       select: {
         id: true,

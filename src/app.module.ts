@@ -13,6 +13,9 @@ import { OrganizationsModule } from '@/modules/organizations/organizations.modul
 import { ProjectsModule } from '@/modules/projects/projects.module';
 import { RequirementsModule } from '@/modules/requirements/requirements.module';
 import { TechStackModule } from '@/modules/tech-stack/tech-stack.module';
+import { UserFlowsModule } from '@/modules/user-flows/user-flows.module';
+import { WireframesModule } from '@/modules/wireframes/wireframes.module';
+import { CodeGenerationModule } from '@/modules/code-generation/code-generation.module';
 import { AdminModule } from '@/modules/admin/admin.module';
 import { envValidationSchema } from '@/config/env.validation';
 import { ThrottlerBehindProxyGuard } from '@/common/guards/throttler-behind-proxy.guard';
@@ -48,6 +51,9 @@ import { SystemRolesGuard } from '@/common/guards/system-roles.guard';
     RequirementsModule,
     EstimatesModule,
     TechStackModule,
+    UserFlowsModule,
+    WireframesModule,
+    CodeGenerationModule,
     AiModule,
     BillingModule,
     IntegrationsModule,

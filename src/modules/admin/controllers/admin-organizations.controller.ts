@@ -22,7 +22,9 @@ import { AdminOrganizationsService } from '@/modules/admin/services/admin-organi
 @SystemRoles(SystemRole.SUPER_ADMIN)
 @Controller('admin/organizations')
 export class AdminOrganizationsController {
-  constructor(private readonly adminOrganizationsService: AdminOrganizationsService) {}
+  constructor(
+    private readonly adminOrganizationsService: AdminOrganizationsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List all organizations (admin)' })

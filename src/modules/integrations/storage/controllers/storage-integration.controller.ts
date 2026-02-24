@@ -14,10 +14,14 @@ import { StorageIntegrationService } from '@/modules/integrations/storage/servic
 @ApiBearerAuth('bearer')
 @Controller('integrations/storage')
 export class StorageIntegrationController {
-  constructor(private readonly storageIntegrationService: StorageIntegrationService) {}
+  constructor(
+    private readonly storageIntegrationService: StorageIntegrationService,
+  ) {}
 
   @Post('upload-url')
-  @ApiOperation({ summary: 'Generate a pre-signed upload URL for file storage' })
+  @ApiOperation({
+    summary: 'Generate a pre-signed upload URL for file storage',
+  })
   @ApiCreatedResponse({ description: 'Pre-signed upload URL generated' })
   @ApiBadRequestResponse({ description: 'Validation failed' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })

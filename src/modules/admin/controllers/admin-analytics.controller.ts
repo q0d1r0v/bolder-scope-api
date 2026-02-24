@@ -20,7 +20,10 @@ export class AdminAnalyticsController {
 
   @Get('overview')
   @ApiOperation({ summary: 'Get platform overview statistics (admin)' })
-  @ApiOkResponse({ description: 'Platform overview with user, org, project, subscription, and revenue stats' })
+  @ApiOkResponse({
+    description:
+      'Platform overview with user, org, project, subscription, and revenue stats',
+  })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   @ApiForbiddenResponse({ description: 'Super admin access required' })
   getOverview() {

@@ -31,6 +31,9 @@ model User {
   uploadedFiles     FileAsset[]           @relation("FileUploadedBy")
   emails            EmailDelivery[]       @relation("EmailActor")
   activities        ProjectActivity[]     @relation("ProjectActivityActor")
+  userFlows         UserFlowSnapshot[]    @relation("UserFlowCreator")
+  wireframes        WireframeSnapshot[]   @relation("WireframeCreator")
+  codeGenSnapshots  CodeGenSnapshot[]     @relation("CodeGenCreator")
 
   @@map("users")
 }
@@ -123,7 +126,10 @@ model Project {
   features             FeatureItem[]
   estimates            EstimateSnapshot[]
   techRecommendations  TechStackRecommendation[]
+  userFlows            UserFlowSnapshot[]
+  wireframes           WireframeSnapshot[]
   aiRuns               AiRun[]
+  codeGenSnapshots     CodeGenSnapshot[]
   files                FileAsset[]
   emails               EmailDelivery[]
   usageRecords         UsageRecord[]
@@ -191,6 +197,9 @@ model RequirementSnapshot {
   features            FeatureItem[]
   estimates           EstimateSnapshot[]        @relation("EstimateRequirement")
   techRecommendations TechStackRecommendation[] @relation("TechStackRequirement")
+  userFlows           UserFlowSnapshot[]        @relation("UserFlowRequirement")
+  wireframes          WireframeSnapshot[]       @relation("WireframeRequirement")
+  codeGenSnapshots    CodeGenSnapshot[]         @relation("CodeGenRequirement")
   aiRuns              AiRun[]                   @relation("AiRunRequirement")
 
   @@unique([projectId, version])
@@ -214,6 +223,7 @@ model FeatureItem {
   project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   requirementSnapshot   RequirementSnapshot? @relation(fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
   estimateLineItems     EstimateLineItem[]
+  userFlowScreens       UserFlowScreen[]
 
   @@index([projectId, orderIndex])
   @@index([requirementSnapshotId])
@@ -286,6 +296,7 @@ model TechStackRecommendation {
   updatedAt             DateTime             @updatedAt
   project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   requirementSnapshot   RequirementSnapshot? @relation("TechStackRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  codeGenSnapshots      CodeGenSnapshot[]    @relation("CodeGenTechStack")
 
   @@unique([projectId, version])
   @@map("tech_stack_recommendations")
@@ -298,6 +309,9 @@ model AiRun {
   projectInputId        String?              @db.Uuid
   requirementSnapshotId String?              @db.Uuid
   estimateSnapshotId    String?              @db.Uuid
+  userFlowSnapshotId    String?              @db.Uuid
+  wireframeSnapshotId   String?              @db.Uuid
+  codeGenSnapshotId     String?              @db.Uuid
   initiatedById         String?              @db.Uuid
   provider              AiProvider
   model                 String
@@ -316,6 +330,9 @@ model AiRun {
   projectInput          ProjectInput?        @relation(fields: [projectInputId], references: [id], onDelete: SetNull)
   requirementSnapshot   RequirementSnapshot? @relation("AiRunRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
   estimateSnapshot      EstimateSnapshot?    @relation("AiRunEstimate", fields: [estimateSnapshotId], references: [id], onDelete: SetNull)
+  userFlowSnapshot      UserFlowSnapshot?    @relation("AiRunUserFlow", fields: [userFlowSnapshotId], references: [id], onDelete: SetNull)
+  wireframeSnapshot     WireframeSnapshot?   @relation("AiRunWireframe", fields: [wireframeSnapshotId], references: [id], onDelete: SetNull)
+  codeGenSnapshot       CodeGenSnapshot?     @relation("AiRunCodeGen", fields: [codeGenSnapshotId], references: [id], onDelete: SetNull)
   initiatedBy           User?                @relation("AiRunInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
 
   @@index([projectId, createdAt])
@@ -462,6 +479,120 @@ model ProjectActivity {
   @@map("project_activities")
 }
 
+model UserFlowSnapshot {
+  id                    String               @id @default(uuid()) @db.Uuid
+  projectId             String               @db.Uuid
+  requirementSnapshotId String?              @db.Uuid
+  version               Int
+  status                UserFlowStatus       @default(GENERATED)
+  aiProvider            AiProvider?
+  screenCount           Int                  @default(0)
+  flowJson              Json
+  assumptions           String?
+  createdById           String?              @db.Uuid
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementSnapshot   RequirementSnapshot? @relation("UserFlowRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  createdBy             User?                @relation("UserFlowCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  screens               UserFlowScreen[]
+  wireframes            WireframeSnapshot[]  @relation("WireframeUserFlow")
+  aiRuns                AiRun[]              @relation("AiRunUserFlow")
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("user_flow_snapshots")
+}
+
+model UserFlowScreen {
+  id                 String               @id @default(uuid()) @db.Uuid
+  userFlowSnapshotId String               @db.Uuid
+  featureItemId      String?              @db.Uuid
+  name               String
+  description        String?
+  screenType         String?
+  purpose            String?
+  userActions        String[]
+  entryPoint         Boolean              @default(false)
+  sortOrder          Int                  @default(0)
+  metadata           Json?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  userFlowSnapshot   UserFlowSnapshot     @relation(fields: [userFlowSnapshotId], references: [id], onDelete: Cascade)
+  featureItem        FeatureItem?         @relation(fields: [featureItemId], references: [id], onDelete: SetNull)
+  transitionsFrom    UserFlowTransition[] @relation("TransitionFrom")
+  transitionsTo      UserFlowTransition[] @relation("TransitionTo")
+  wireframeScreens   WireframeScreen[]
+
+  @@index([userFlowSnapshotId, sortOrder])
+  @@index([featureItemId])
+  @@map("user_flow_screens")
+}
+
+model UserFlowTransition {
+  id           String         @id @default(uuid()) @db.Uuid
+  fromScreenId String         @db.Uuid
+  toScreenId   String         @db.Uuid
+  triggerAction String
+  triggerLabel  String?
+  condition     String?
+  sortOrder     Int            @default(0)
+  createdAt     DateTime       @default(now())
+  fromScreen    UserFlowScreen @relation("TransitionFrom", fields: [fromScreenId], references: [id], onDelete: Cascade)
+  toScreen      UserFlowScreen @relation("TransitionTo", fields: [toScreenId], references: [id], onDelete: Cascade)
+
+  @@index([fromScreenId])
+  @@index([toScreenId])
+  @@map("user_flow_transitions")
+}
+
+model WireframeSnapshot {
+  id                    String               @id @default(uuid()) @db.Uuid
+  projectId             String               @db.Uuid
+  requirementSnapshotId String?              @db.Uuid
+  userFlowSnapshotId    String?              @db.Uuid
+  version               Int
+  status                WireframeStatus      @default(GENERATED)
+  aiProvider            AiProvider?
+  pageCount             Int                  @default(0)
+  wireframeJson         Json
+  designSystem          Json?
+  assumptions           String?
+  createdById           String?              @db.Uuid
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  project               Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementSnapshot   RequirementSnapshot? @relation("WireframeRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  userFlowSnapshot      UserFlowSnapshot?    @relation("WireframeUserFlow", fields: [userFlowSnapshotId], references: [id], onDelete: SetNull)
+  createdBy             User?                @relation("WireframeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  screens               WireframeScreen[]
+  codeGenSnapshots      CodeGenSnapshot[]    @relation("CodeGenWireframe")
+  aiRuns                AiRun[]              @relation("AiRunWireframe")
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("wireframe_snapshots")
+}
+
+model WireframeScreen {
+  id                  String            @id @default(uuid()) @db.Uuid
+  wireframeSnapshotId String            @db.Uuid
+  userFlowScreenId    String?           @db.Uuid
+  name                String
+  description         String?
+  layoutJson          Json
+  sortOrder           Int               @default(0)
+  metadata            Json?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  wireframeSnapshot   WireframeSnapshot @relation(fields: [wireframeSnapshotId], references: [id], onDelete: Cascade)
+  userFlowScreen      UserFlowScreen?   @relation(fields: [userFlowScreenId], references: [id], onDelete: SetNull)
+
+  @@index([wireframeSnapshotId, sortOrder])
+  @@index([userFlowScreenId])
+  @@map("wireframe_screens")
+}
+
 enum SystemRole {
   SUPER_ADMIN
   USER
@@ -517,7 +648,9 @@ enum ProjectStage {
   REQUIREMENT_DISCOVERY
   FEATURE_DEFINITION
   ESTIMATION
+  WIREFRAMING
   REVIEW
+  CODE_GENERATION
 }
 
 enum ProjectSourceType {
@@ -573,6 +706,9 @@ enum AiTaskType {
   TIMELINE_ESTIMATION
   COST_ESTIMATION
   TECH_STACK_RECOMMENDATION
+  USER_FLOW_GENERATION
+  WIREFRAME_GENERATION
+  CODE_GENERATION
 }
 
 enum AiRunStatus {
@@ -632,7 +768,20 @@ enum AssetProvider {
 enum AssetKind {
   VOICE_INPUT
   WIREFRAME_EXPORT
+  CODE_EXPORT
   ATTACHMENT
+}
+
+enum UserFlowStatus {
+  GENERATED
+  REVIEWED
+  APPROVED
+}
+
+enum WireframeStatus {
+  GENERATED
+  REVIEWED
+  APPROVED
 }
 
 enum ProjectEventType {
@@ -642,7 +791,85 @@ enum ProjectEventType {
   FEATURES_UPDATED
   ESTIMATE_GENERATED
   TECH_STACK_GENERATED
+  USER_FLOW_GENERATED
+  WIREFRAME_GENERATED
+  CODE_GENERATED
   STATUS_CHANGED
   MEMBER_ADDED
   CONTRACT_APPROVED
+}
+
+// ─── Code Generation (Phase 3) ─────────────────────────────────────
+
+enum CodeGenStatus {
+  GENERATED
+  REVIEWED
+  APPROVED
+}
+
+enum CodeGenStack {
+  NEXTJS_NESTJS
+  NEXTJS_EXPRESS
+  REACT_NESTJS
+  REACT_EXPRESS
+}
+
+enum CodeGenFileType {
+  PAGE
+  COMPONENT
+  API_ROUTE
+  SERVICE
+  SCHEMA
+  CONFIG
+  STYLE
+  UTIL
+  TYPE
+}
+
+model CodeGenSnapshot {
+  id                        String                   @id @default(uuid()) @db.Uuid
+  projectId                 String                   @db.Uuid
+  requirementSnapshotId     String?                  @db.Uuid
+  wireframeSnapshotId       String?                  @db.Uuid
+  techStackRecommendationId String?                  @db.Uuid
+  version                   Int
+  status                    CodeGenStatus            @default(GENERATED)
+  stack                     CodeGenStack
+  aiProvider                AiProvider?
+  fileCount                 Int                      @default(0)
+  codeJson                  Json
+  projectStructure          Json?
+  assumptions               String?
+  createdById               String?                  @db.Uuid
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  project                   Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementSnapshot       RequirementSnapshot?     @relation("CodeGenRequirement", fields: [requirementSnapshotId], references: [id], onDelete: SetNull)
+  wireframeSnapshot         WireframeSnapshot?       @relation("CodeGenWireframe", fields: [wireframeSnapshotId], references: [id], onDelete: SetNull)
+  techStackRecommendation   TechStackRecommendation? @relation("CodeGenTechStack", fields: [techStackRecommendationId], references: [id], onDelete: SetNull)
+  createdBy                 User?                    @relation("CodeGenCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  files                     CodeGenFile[]
+  aiRuns                    AiRun[]                  @relation("AiRunCodeGen")
+
+  @@unique([projectId, version])
+  @@index([projectId, status])
+  @@map("code_gen_snapshots")
+}
+
+model CodeGenFile {
+  id                String          @id @default(uuid()) @db.Uuid
+  codeGenSnapshotId String          @db.Uuid
+  filePath          String
+  fileName          String
+  fileType          CodeGenFileType
+  language          String
+  content           String
+  description       String?
+  sortOrder         Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  codeGenSnapshot   CodeGenSnapshot @relation(fields: [codeGenSnapshotId], references: [id], onDelete: Cascade)
+
+  @@index([codeGenSnapshotId, sortOrder])
+  @@map("code_gen_files")
 }

@@ -14,7 +14,10 @@ const parseCorsOrigins = (origins: string): string[] => {
     .filter((origin) => origin.length > 0);
 };
 
-const isCorsOriginAllowed = (origin: string | undefined, allowedOrigins: string[]): boolean => {
+const isCorsOriginAllowed = (
+  origin: string | undefined,
+  allowedOrigins: string[],
+): boolean => {
   if (!origin) {
     return true;
   }
@@ -39,7 +42,10 @@ const parseBasicAuthHeader = (
   }
 
   try {
-    const decodedCredentials = Buffer.from(base64Credentials, 'base64').toString('utf8');
+    const decodedCredentials = Buffer.from(
+      base64Credentials,
+      'base64',
+    ).toString('utf8');
     const separatorIndex = decodedCredentials.indexOf(':');
 
     if (separatorIndex === -1) {
@@ -59,7 +65,10 @@ const createSwaggerAuthMiddleware = (username: string, password: string) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const credentials = parseBasicAuthHeader(req.headers.authorization);
 
-    if (credentials?.username === username && credentials.password === password) {
+    if (
+      credentials?.username === username &&
+      credentials.password === password
+    ) {
       next();
       return;
     }
@@ -103,27 +112,38 @@ async function bootstrap() {
   app.use(json({ limit: '1mb' }));
   app.use(urlencoded({ extended: true, limit: '1mb' }));
 
-  const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS ?? 'http://localhost:3000');
+  const corsOrigins = parseCorsOrigins(
+    process.env.CORS_ORIGINS ?? 'http://localhost:3000',
+  );
   app.enableCors({
     origin: (origin, callback) => {
       callback(null, isCorsOriginAllowed(origin, corsOrigins));
     },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'X-Requested-With'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Accept',
+      'X-Requested-With',
+    ],
   });
 
   app.setGlobalPrefix('api/v1');
 
-  const isDevelopment = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'development';
+  const isDevelopment =
+    (process.env.NODE_ENV ?? 'development').toLowerCase() === 'development';
   const swaggerEnabled =
-    isDevelopment && (process.env.SWAGGER_ENABLED ?? 'true').toLowerCase() !== 'false';
+    isDevelopment &&
+    (process.env.SWAGGER_ENABLED ?? 'true').toLowerCase() !== 'false';
 
   if (swaggerEnabled) {
-    const swaggerPath = (process.env.SWAGGER_PATH ?? 'docs').replace(/^\/+|\/+$/g, '') || 'docs';
+    const swaggerPath =
+      (process.env.SWAGGER_PATH ?? 'docs').replace(/^\/+|\/+$/g, '') || 'docs';
     const swaggerRoute = normalizePath(swaggerPath);
     const swaggerUsername = process.env.SWAGGER_USERNAME ?? 'swagger_admin';
-    const swaggerPassword = process.env.SWAGGER_PASSWORD ?? 'change-me-swagger-password';
+    const swaggerPassword =
+      process.env.SWAGGER_PASSWORD ?? 'change-me-swagger-password';
 
     app.use(
       [swaggerRoute, `${swaggerRoute}-json`],
@@ -132,7 +152,9 @@ async function bootstrap() {
 
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Bolder Scope API')
-      .setDescription('AI-powered requirement, estimate, and prototype platform API')
+      .setDescription(
+        'AI-powered requirement, estimate, and prototype platform API',
+      )
       .setVersion('1.0.0')
       .addBearerAuth(
         {

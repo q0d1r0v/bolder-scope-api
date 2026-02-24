@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum OrganizationInviteRole {
@@ -31,9 +38,12 @@ export class InviteMemberDto {
     example: 'John Doe',
     minLength: 2,
     maxLength: 120,
-    description: 'Full name of the invited person (optional, can be set when accepting invite)',
+    description:
+      'Full name of the invited person (optional, can be set when accepting invite)',
   })
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
   @IsString()
   @MinLength(2)

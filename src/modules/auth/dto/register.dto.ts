@@ -1,5 +1,12 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum AuthAccountRole {
@@ -33,7 +40,8 @@ export class RegisterDto {
     enum: AuthAccountRole,
     enumName: 'AuthAccountRole',
     example: AuthAccountRole.AGENCY,
-    description: 'Select whether this account is for an agency or a client organization',
+    description:
+      'Select whether this account is for an agency or a client organization',
   })
   @IsEnum(AuthAccountRole)
   role!: AuthAccountRole;
@@ -44,7 +52,9 @@ export class RegisterDto {
     maxLength: 120,
     description: 'Full name',
   })
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @MinLength(2)
   @MaxLength(120)
@@ -54,9 +64,12 @@ export class RegisterDto {
     example: 'Bolder Scope Studio',
     minLength: 2,
     maxLength: 120,
-    description: 'Optional organization name. If omitted, it will be generated from full name and role',
+    description:
+      'Optional organization name. If omitted, it will be generated from full name and role',
   })
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsOptional()
   @IsString()
   @MinLength(2)

@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
-import { buildPrismaPagination, paginate } from '@/common/helpers/pagination.helper';
+import {
+  buildPrismaPagination,
+  paginate,
+} from '@/common/helpers/pagination.helper';
 import { AdminAiRunsQueryDto } from '@/modules/admin/dto/admin-ai-runs.dto';
 
 @Injectable()

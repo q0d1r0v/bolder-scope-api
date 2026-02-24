@@ -10,7 +10,9 @@ export class VerifyEmailDto {
     maxLength: 4096,
     description: 'Email verification token received via email',
   })
-  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @MinLength(20)
   @MaxLength(4096)

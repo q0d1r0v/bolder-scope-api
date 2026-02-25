@@ -393,13 +393,13 @@ export class OrganizationsService {
       where: {
         id: memberId,
         organizationId,
-        inviteStatus: InviteStatus.PENDING,
+        inviteStatus: { in: [InviteStatus.PENDING, InviteStatus.ACCEPTED] },
       },
       select: { id: true },
     });
 
     if (!member) {
-      throw new NotFoundException('Pending invite not found');
+      throw new NotFoundException('Invite not found');
     }
 
     await this.prisma.organizationMember.update({

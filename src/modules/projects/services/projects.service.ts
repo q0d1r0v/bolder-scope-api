@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   InviteStatus,
+  OrganizationRole,
   ProjectEventType,
   ProjectRole,
   ProjectStatus,
@@ -14,6 +15,7 @@ import {
 } from '@prisma/client';
 import type { CurrentUserShape } from '@/common/decorators/current-user.decorator';
 import type { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
+import type { ProjectQueryDto } from '@/modules/projects/dto/project-query.dto';
 import {
   buildPrismaPagination,
   paginate,
@@ -30,7 +32,10 @@ export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(payload: CreateProjectDto, user: CurrentUserShape) {
-    await this.requireOrgMembership(payload.organizationId, user);
+    await this.requireOrgRole(payload.organizationId, user, [
+      OrganizationRole.OWNER,
+      OrganizationRole.ADMIN,
+    ]);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const project = await tx.project.create({
@@ -78,10 +83,14 @@ export class ProjectsService {
     return result;
   }
 
-  async findAll(user: CurrentUserShape, query: PaginationQueryDto) {
+  async findAll(user: CurrentUserShape, query: ProjectQueryDto) {
     const { skip, take } = buildPrismaPagination(query);
 
-    const where = this.buildProjectAccessWhere(user);
+    const where = {
+      ...this.buildProjectAccessWhere(user),
+      ...(query.organizationId && { organizationId: query.organizationId }),
+      ...(query.status && { status: query.status }),
+    };
 
     const [projects, total] = await Promise.all([
       this.prisma.project.findMany({
@@ -344,11 +353,30 @@ export class ProjectsService {
 
     const membership = await this.prisma.organizationMember.findUnique({
       where: { organizationId_userId: { organizationId, userId: user.userId } },
-      select: { id: true, inviteStatus: true },
+      select: { id: true, role: true, inviteStatus: true },
     });
 
     if (!membership || membership.inviteStatus !== InviteStatus.ACCEPTED) {
       throw new ForbiddenException('You are not a member of this organization');
+    }
+
+    return membership;
+  }
+
+  private async requireOrgRole(
+    organizationId: string,
+    user: CurrentUserShape,
+    allowedRoles: OrganizationRole[],
+  ) {
+    const membership = await this.requireOrgMembership(organizationId, user);
+
+    if (
+      membership &&
+      !allowedRoles.includes(membership.role as OrganizationRole)
+    ) {
+      throw new ForbiddenException(
+        'You do not have the required role to perform this action',
+      );
     }
   }
 

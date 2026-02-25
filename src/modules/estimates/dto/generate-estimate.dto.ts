@@ -1,4 +1,10 @@
-import { IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  MaxLength,
+} from 'class-validator';
 
 export class GenerateEstimateDto {
   @IsUUID()
@@ -12,4 +18,9 @@ export class GenerateEstimateDto {
   @IsString()
   @Length(3, 3)
   targetCurrency?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  instruction?: string;
 }

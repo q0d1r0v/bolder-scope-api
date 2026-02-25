@@ -48,7 +48,7 @@ export class OrganizationsController {
     @Body() payload: CreateOrganizationDto,
     @CurrentUser() user: CurrentUserShape,
   ) {
-    return this.organizationsService.create(payload, user.userId);
+    return this.organizationsService.create(payload, user);
   }
 
   @Get()
@@ -59,7 +59,7 @@ export class OrganizationsController {
     @Query() query: PaginationQueryDto,
     @CurrentUser() user: CurrentUserShape,
   ) {
-    return this.organizationsService.findAll(user.userId, query);
+    return this.organizationsService.findAll(user, query);
   }
 
   @Get(':organizationId')

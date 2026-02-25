@@ -7,7 +7,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InviteStatus, OrganizationRole, UserStatus } from '@prisma/client';
+import {
+  InviteStatus,
+  OrganizationRole,
+  SystemRole,
+  UserStatus,
+} from '@prisma/client';
+import type { CurrentUserShape } from '@/common/decorators/current-user.decorator';
 import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -43,7 +49,17 @@ export class OrganizationsService {
     );
   }
 
-  async create(payload: CreateOrganizationDto, userId: string) {
+  async create(payload: CreateOrganizationDto, user: CurrentUserShape) {
+    if (
+      user.systemRole !== SystemRole.SUPER_ADMIN &&
+      (user.organizationRole === OrganizationRole.CLIENT ||
+        user.organizationRole === OrganizationRole.DEVELOPER)
+    ) {
+      throw new ForbiddenException(
+        'You do not have permission to create an organization',
+      );
+    }
+
     const existing = await this.prisma.organization.findUnique({
       where: { slug: payload.slug },
       select: { id: true },
@@ -60,7 +76,7 @@ export class OrganizationsService {
         billingEmail: payload.billingEmail,
         memberships: {
           create: {
-            userId,
+            userId: user.userId,
             role: OrganizationRole.OWNER,
             inviteStatus: InviteStatus.ACCEPTED,
           },
@@ -80,9 +96,31 @@ export class OrganizationsService {
     return organization;
   }
 
-  async findAll(userId: string, query: PaginationQueryDto) {
-    const where = { userId };
+  async findAll(user: CurrentUserShape, query: PaginationQueryDto) {
     const { skip, take } = buildPrismaPagination(query);
+
+    if (user.systemRole === SystemRole.SUPER_ADMIN) {
+      const [organizations, total] = await Promise.all([
+        this.prisma.organization.findMany({
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+          skip,
+          take,
+        }),
+        this.prisma.organization.count(),
+      ]);
+
+      return paginate(organizations, total, query);
+    }
+
+    const where = { userId: user.userId, inviteStatus: InviteStatus.ACCEPTED };
 
     const [memberships, total] = await Promise.all([
       this.prisma.organizationMember.findMany({

@@ -554,10 +554,19 @@ model WireframeSnapshot {
   version               Int
   status                WireframeStatus      @default(GENERATED)
   aiProvider            AiProvider?
+  aiModel               String?
+  summary               String?              @db.Text
   pageCount             Int                  @default(0)
   wireframeJson         Json
   designSystem          Json?
-  assumptions           String?
+  navigationFlow        Json?
+  assumptions           String?              @db.Text
+  sourcePrompt          String?              @db.Text
+  platform              String?
+  style                 String?
+  promptTokens          Int?
+  completionTokens      Int?
+  generationTimeMs      Int?
   createdById           String?              @db.Uuid
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
@@ -579,14 +588,23 @@ model WireframeScreen {
   wireframeSnapshotId String            @db.Uuid
   userFlowScreenId    String?           @db.Uuid
   name                String
-  description         String?
+  description         String?           @db.Text
   layoutJson          Json
   sortOrder           Int               @default(0)
+  screenType          String            @default("page")
+  viewportWidth       Int?
+  viewportHeight      Int?
+  screenState         String            @default("default")
+  parentScreenId      String?           @db.Uuid
+  annotations         Json?
+  interactions        Json?
   metadata            Json?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   wireframeSnapshot   WireframeSnapshot @relation(fields: [wireframeSnapshotId], references: [id], onDelete: Cascade)
   userFlowScreen      UserFlowScreen?   @relation(fields: [userFlowScreenId], references: [id], onDelete: SetNull)
+  parentScreen        WireframeScreen?  @relation("ScreenHierarchy", fields: [parentScreenId], references: [id])
+  childScreens        WireframeScreen[] @relation("ScreenHierarchy")
 
   @@index([wireframeSnapshotId, sortOrder])
   @@index([userFlowScreenId])
@@ -708,6 +726,7 @@ enum AiTaskType {
   TECH_STACK_RECOMMENDATION
   USER_FLOW_GENERATION
   WIREFRAME_GENERATION
+  TEXT_TO_DESIGN
   CODE_GENERATION
 }
 
@@ -793,6 +812,7 @@ enum ProjectEventType {
   TECH_STACK_GENERATED
   USER_FLOW_GENERATED
   WIREFRAME_GENERATED
+  DESIGN_GENERATED
   CODE_GENERATED
   STATUS_CHANGED
   MEMBER_ADDED

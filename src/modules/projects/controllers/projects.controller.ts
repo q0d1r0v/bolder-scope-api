@@ -23,6 +23,7 @@ import type { CurrentUserShape } from '@/common/decorators/current-user.decorato
 import { PaginationQueryDto } from '@/common/dto/pagination-query.dto';
 import { AddProjectInputDto } from '@/modules/projects/dto/add-project-input.dto';
 import { CreateProjectDto } from '@/modules/projects/dto/create-project.dto';
+import { ProjectQueryDto } from '@/modules/projects/dto/project-query.dto';
 import { UpdateProjectStatusDto } from '@/modules/projects/dto/update-project-status.dto';
 import { ProjectsService } from '@/modules/projects/services/projects.service';
 
@@ -50,7 +51,7 @@ export class ProjectsController {
   @ApiOkResponse({ description: 'Paginated list of projects' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
   findAll(
-    @Query() query: PaginationQueryDto,
+    @Query() query: ProjectQueryDto,
     @CurrentUser() user: CurrentUserShape,
   ) {
     return this.projectsService.findAll(user, query);

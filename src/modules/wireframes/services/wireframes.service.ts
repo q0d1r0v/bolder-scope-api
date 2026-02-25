@@ -24,6 +24,14 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { AiService } from '@/modules/ai/services/ai.service';
 import { GenerateWireframeDto } from '@/modules/wireframes/dto/generate-wireframe.dto';
 import { ExportFormat } from '@/modules/wireframes/dto/export-wireframe.dto';
+import { TextToDesignDto } from '@/modules/wireframes/dto/text-to-design.dto';
+import { RefineScreenDto } from '@/modules/wireframes/dto/refine-screen.dto';
+import { RegenerateScreenDto } from '@/modules/wireframes/dto/regenerate-screen.dto';
+import { AddScreenDto } from '@/modules/wireframes/dto/add-screen.dto';
+import { ApplyStyleDto } from '@/modules/wireframes/dto/apply-style.dto';
+import { ReorderScreensDto } from '@/modules/wireframes/dto/reorder-screens.dto';
+import { RegenerateDesignSystemDto } from '@/modules/wireframes/dto/regenerate-design-system.dto';
+import { INDUSTRY_PATTERNS } from '@/modules/wireframes/prompts/layout-generation.prompt';
 
 @Injectable()
 export class WireframesService {
@@ -34,10 +42,14 @@ export class WireframesService {
     private readonly aiService: AiService,
   ) {}
 
+  // ─── GENERATE (from requirements + user flows) ───
+
   async generate(payload: GenerateWireframeDto, user: CurrentUserShape) {
+    const startTime = Date.now();
+
     const project = await this.prisma.project.findUnique({
       where: { id: payload.projectId },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, name: true, description: true },
     });
 
     if (!project) {
@@ -152,6 +164,8 @@ export class WireframesService {
       flowScreenMap.set(screen.name, screen.id);
     }
 
+    const generationTimeMs = Date.now() - startTime;
+
     const snapshot = await this.prisma.$transaction(async (tx) => {
       const created = await tx.wireframeSnapshot.create({
         data: {
@@ -161,10 +175,12 @@ export class WireframesService {
           version: nextVersion,
           status: WireframeStatus.GENERATED,
           aiProvider: AiProvider.CLAUDE,
+          aiModel: 'claude-sonnet-4-20250514',
           pageCount: wireframeResult.screens.length,
           wireframeJson: wireframeResult as object,
           designSystem: wireframeResult.designSystem as object,
           assumptions: wireframeResult.assumptions ?? null,
+          generationTimeMs,
           createdById: user.userId,
         },
         select: {
@@ -174,6 +190,7 @@ export class WireframesService {
           pageCount: true,
           designSystem: true,
           assumptions: true,
+          generationTimeMs: true,
           createdAt: true,
         },
       });
@@ -190,6 +207,9 @@ export class WireframesService {
               sections: screenData.sections,
             } as Prisma.InputJsonValue,
             sortOrder: index,
+            screenType: screenData.screenType ?? 'page',
+            viewportWidth: 1440,
+            viewportHeight: 900,
           },
         });
       }
@@ -225,6 +245,9 @@ export class WireframesService {
         description: true,
         layoutJson: true,
         sortOrder: true,
+        screenType: true,
+        viewportWidth: true,
+        viewportHeight: true,
         userFlowScreen: {
           select: { id: true, name: true, screenType: true },
         },
@@ -237,6 +260,527 @@ export class WireframesService {
       screens,
     };
   }
+
+  // ─── TEXT-TO-DESIGN ───
+
+  async generateFromText(payload: TextToDesignDto, user: CurrentUserShape) {
+    const startTime = Date.now();
+
+    const project = await this.prisma.project.findUnique({
+      where: { id: payload.projectId },
+      select: { id: true, organizationId: true, name: true, description: true },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
+
+    await this.requireProjectAccess(
+      payload.projectId,
+      project.organizationId,
+      user,
+    );
+
+    const aiContext = {
+      organizationId: project.organizationId,
+      projectId: project.id,
+      userId: user.userId,
+    };
+
+    const { result: designResult, aiRunId } =
+      await this.aiService.generateDesignFromText(
+        payload.prompt,
+        {
+          platform: payload.platform ?? 'WEB',
+          style: payload.style,
+          screenCount: payload.screenCount,
+          colorScheme: payload.colorScheme,
+        },
+        aiContext,
+      );
+
+    const latestVersion = await this.prisma.wireframeSnapshot.findFirst({
+      where: { projectId: payload.projectId },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    const nextVersion = (latestVersion?.version ?? 0) + 1;
+
+    const viewportWidth = this.getViewportWidth(payload.platform);
+    const viewportHeight = this.getViewportHeight(payload.platform);
+    const generationTimeMs = Date.now() - startTime;
+
+    const snapshot = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.wireframeSnapshot.create({
+        data: {
+          projectId: payload.projectId,
+          version: nextVersion,
+          status: WireframeStatus.GENERATED,
+          aiProvider: AiProvider.CLAUDE,
+          aiModel: 'claude-sonnet-4-20250514',
+          pageCount: designResult.screens.length,
+          wireframeJson: designResult as object,
+          designSystem: designResult.designSystem as object,
+          navigationFlow: (designResult.navigationFlow ?? []) as object,
+          assumptions: designResult.assumptions ?? null,
+          sourcePrompt: payload.prompt,
+          platform: payload.platform ?? 'WEB',
+          style: payload.style ?? null,
+          generationTimeMs,
+          createdById: user.userId,
+        },
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          pageCount: true,
+          designSystem: true,
+          navigationFlow: true,
+          assumptions: true,
+          sourcePrompt: true,
+          platform: true,
+          style: true,
+          generationTimeMs: true,
+          createdAt: true,
+        },
+      });
+
+      for (const [index, screenData] of designResult.screens.entries()) {
+        await tx.wireframeScreen.create({
+          data: {
+            wireframeSnapshotId: created.id,
+            name: screenData.screenName,
+            description: screenData.description,
+            layoutJson: {
+              title: screenData.title,
+              sections: screenData.sections,
+            } as Prisma.InputJsonValue,
+            sortOrder: index,
+            screenType: screenData.screenType ?? 'page',
+            viewportWidth,
+            viewportHeight,
+            metadata: {
+              generatedFrom: 'text-to-design',
+            } as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      await tx.project.update({
+        where: { id: payload.projectId },
+        data: { stage: ProjectStage.WIREFRAMING },
+      });
+
+      await tx.projectActivity.create({
+        data: {
+          organizationId: project.organizationId,
+          projectId: payload.projectId,
+          actorUserId: user.userId,
+          eventType: ProjectEventType.DESIGN_GENERATED,
+          summary: `Design v${nextVersion} generated from text prompt with ${designResult.screens.length} screens`,
+          payload: {
+            wireframeSnapshotId: created.id,
+            aiRunId,
+            screenCount: designResult.screens.length,
+            platform: payload.platform ?? 'WEB',
+            style: payload.style,
+            prompt: payload.prompt.slice(0, 200),
+          },
+        },
+      });
+
+      return created;
+    });
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshot.id },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        sortOrder: true,
+        screenType: true,
+        viewportWidth: true,
+        viewportHeight: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    return {
+      ...snapshot,
+      screens,
+    };
+  }
+
+  // ─── REFINE SCREEN ───
+
+  async refineScreen(
+    snapshotId: string,
+    screenId: string,
+    payload: RefineScreenDto,
+    user: CurrentUserShape,
+  ) {
+    const { snapshot, screen } = await this.getSnapshotAndScreen(
+      snapshotId,
+      screenId,
+      user,
+    );
+
+    const aiContext = {
+      organizationId: snapshot.project.organizationId,
+      projectId: snapshot.projectId,
+      userId: user.userId,
+    };
+
+    const { result } = await this.aiService.refineScreenLayout(
+      screen.name,
+      screen.layoutJson as Record<string, unknown>,
+      (snapshot.designSystem as Record<string, unknown>) ?? {},
+      payload.instruction,
+      aiContext,
+    );
+
+    const updated = await this.prisma.wireframeScreen.update({
+      where: { id: screenId },
+      data: {
+        layoutJson: result.layoutJson as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        sortOrder: true,
+        screenType: true,
+        viewportWidth: true,
+        viewportHeight: true,
+      },
+    });
+
+    return updated;
+  }
+
+  // ─── REGENERATE SCREEN ───
+
+  async regenerateScreen(
+    snapshotId: string,
+    screenId: string,
+    payload: RegenerateScreenDto,
+    user: CurrentUserShape,
+  ) {
+    const { snapshot, screen } = await this.getSnapshotAndScreen(
+      snapshotId,
+      screenId,
+      user,
+    );
+
+    const aiContext = {
+      organizationId: snapshot.project.organizationId,
+      projectId: snapshot.projectId,
+      userId: user.userId,
+    };
+
+    const { result } = await this.aiService.regenerateScreenLayout(
+      screen.name,
+      screen.description ?? '',
+      (snapshot.designSystem as Record<string, unknown>) ?? {},
+      snapshot.platform ?? 'WEB',
+      snapshot.style ?? 'MODERN',
+      payload.instruction,
+      aiContext,
+    );
+
+    const updated = await this.prisma.wireframeScreen.update({
+      where: { id: screenId },
+      data: {
+        layoutJson: result.layoutJson as Prisma.InputJsonValue,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        sortOrder: true,
+        screenType: true,
+        viewportWidth: true,
+        viewportHeight: true,
+      },
+    });
+
+    return updated;
+  }
+
+  // ─── ADD SCREEN ───
+
+  async addScreen(
+    snapshotId: string,
+    payload: AddScreenDto,
+    user: CurrentUserShape,
+  ) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const existingScreens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshotId },
+      select: { name: true, sortOrder: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const aiContext = {
+      organizationId: snapshot.project.organizationId,
+      projectId: snapshot.projectId,
+      userId: user.userId,
+    };
+
+    const { result } = await this.aiService.generateSingleScreenLayout(
+      payload.name,
+      payload.description,
+      (snapshot.designSystem as Record<string, unknown>) ?? {},
+      existingScreens.map((s) => s.name),
+      snapshot.platform ?? 'WEB',
+      snapshot.style ?? 'MODERN',
+      payload.instruction,
+      aiContext,
+    );
+
+    const maxSortOrder = existingScreens.reduce(
+      (max, s) => Math.max(max, s.sortOrder),
+      -1,
+    );
+
+    const viewportWidth = this.getViewportWidth(snapshot.platform);
+    const viewportHeight = this.getViewportHeight(snapshot.platform);
+
+    const screen = await this.prisma.wireframeScreen.create({
+      data: {
+        wireframeSnapshotId: snapshotId,
+        name: payload.name,
+        description: payload.description,
+        layoutJson: result.layoutJson as Prisma.InputJsonValue,
+        sortOrder: maxSortOrder + 1,
+        screenType: payload.screenType ?? 'page',
+        viewportWidth,
+        viewportHeight,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        sortOrder: true,
+        screenType: true,
+        viewportWidth: true,
+        viewportHeight: true,
+      },
+    });
+
+    await this.prisma.wireframeSnapshot.update({
+      where: { id: snapshotId },
+      data: { pageCount: { increment: 1 } },
+    });
+
+    return screen;
+  }
+
+  // ─── APPLY STYLE ───
+
+  async applyStyle(
+    snapshotId: string,
+    payload: ApplyStyleDto,
+    user: CurrentUserShape,
+  ) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshotId },
+      select: { id: true, name: true, layoutJson: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const aiContext = {
+      organizationId: snapshot.project.organizationId,
+      projectId: snapshot.projectId,
+      userId: user.userId,
+    };
+
+    const { result } = await this.aiService.applyStyleToScreens(
+      screens.map((s) => ({
+        name: s.name,
+        layoutJson: s.layoutJson as Record<string, unknown>,
+      })),
+      (snapshot.designSystem as Record<string, unknown>) ?? {},
+      payload.instruction,
+      aiContext,
+    );
+
+    const screenMap = new Map(screens.map((s) => [s.name, s.id]));
+
+    await this.prisma.$transaction(
+      result.screens.map((updated) =>
+        this.prisma.wireframeScreen.update({
+          where: { id: screenMap.get(updated.screenName) ?? '' },
+          data: { layoutJson: updated.layoutJson as Prisma.InputJsonValue },
+        }),
+      ),
+    );
+
+    return this.getById(snapshotId, user);
+  }
+
+  // ─── REORDER SCREENS ───
+
+  async reorderScreens(
+    snapshotId: string,
+    payload: ReorderScreensDto,
+    user: CurrentUserShape,
+  ) {
+    await this.getSnapshotWithAccess(snapshotId, user);
+
+    await this.prisma.$transaction(
+      payload.screenIds.map((id, index) =>
+        this.prisma.wireframeScreen.update({
+          where: { id },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+
+    return { success: true };
+  }
+
+  // ─── DELETE SCREEN ───
+
+  async deleteScreen(
+    snapshotId: string,
+    screenId: string,
+    user: CurrentUserShape,
+  ) {
+    await this.getSnapshotAndScreen(snapshotId, screenId, user);
+
+    await this.prisma.wireframeScreen.delete({ where: { id: screenId } });
+
+    await this.prisma.wireframeSnapshot.update({
+      where: { id: snapshotId },
+      data: { pageCount: { decrement: 1 } },
+    });
+
+    return { success: true };
+  }
+
+  // ─── REGENERATE DESIGN SYSTEM ───
+
+  async regenerateDesignSystem(
+    snapshotId: string,
+    payload: RegenerateDesignSystemDto,
+    user: CurrentUserShape,
+  ) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const aiContext = {
+      organizationId: snapshot.project.organizationId,
+      projectId: snapshot.projectId,
+      userId: user.userId,
+    };
+
+    const projectDescription = snapshot.sourcePrompt
+      ?? snapshot.project.name
+      ?? 'Application';
+
+    const { result } = await this.aiService.regenerateDesignSystem(
+      (snapshot.designSystem as Record<string, unknown>) ?? {},
+      projectDescription,
+      snapshot.platform ?? 'WEB',
+      snapshot.style ?? 'MODERN',
+      payload.instruction,
+      payload.colorScheme,
+      aiContext,
+    );
+
+    await this.prisma.wireframeSnapshot.update({
+      where: { id: snapshotId },
+      data: { designSystem: result as Prisma.InputJsonValue },
+    });
+
+    return result;
+  }
+
+  // ─── FORK SNAPSHOT ───
+
+  async forkSnapshot(
+    snapshotId: string,
+    instruction: string | undefined,
+    user: CurrentUserShape,
+  ) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshotId },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const latestVersion = await this.prisma.wireframeSnapshot.findFirst({
+      where: { projectId: snapshot.projectId },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    const nextVersion = (latestVersion?.version ?? 0) + 1;
+
+    const forked = await this.prisma.$transaction(async (tx) => {
+      const newSnapshot = await tx.wireframeSnapshot.create({
+        data: {
+          projectId: snapshot.projectId,
+          requirementSnapshotId: snapshot.requirementSnapshotId,
+          userFlowSnapshotId: snapshot.userFlowSnapshotId,
+          version: nextVersion,
+          status: WireframeStatus.GENERATED,
+          aiProvider: snapshot.aiProvider,
+          aiModel: snapshot.aiModel,
+          pageCount: screens.length,
+          wireframeJson: snapshot.wireframeJson as Prisma.InputJsonValue,
+          designSystem: snapshot.designSystem as Prisma.InputJsonValue ?? Prisma.DbNull,
+          navigationFlow: snapshot.navigationFlow as Prisma.InputJsonValue ?? Prisma.DbNull,
+          assumptions: snapshot.assumptions,
+          sourcePrompt: instruction ?? snapshot.sourcePrompt,
+          platform: snapshot.platform,
+          style: snapshot.style,
+          createdById: user.userId,
+        },
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          pageCount: true,
+          createdAt: true,
+        },
+      });
+
+      for (const screen of screens) {
+        await tx.wireframeScreen.create({
+          data: {
+            wireframeSnapshotId: newSnapshot.id,
+            userFlowScreenId: screen.userFlowScreenId,
+            name: screen.name,
+            description: screen.description,
+            layoutJson: screen.layoutJson as Prisma.InputJsonValue,
+            sortOrder: screen.sortOrder,
+            screenType: screen.screenType,
+            viewportWidth: screen.viewportWidth,
+            viewportHeight: screen.viewportHeight,
+            screenState: screen.screenState,
+            annotations: screen.annotations as Prisma.InputJsonValue ?? Prisma.DbNull,
+            interactions: screen.interactions as Prisma.InputJsonValue ?? Prisma.DbNull,
+            metadata: screen.metadata as Prisma.InputJsonValue ?? Prisma.DbNull,
+          },
+        });
+      }
+
+      return newSnapshot;
+    });
+
+    return forked;
+  }
+
+  // ─── LIST BY PROJECT ───
 
   async listByProject(
     projectId: string,
@@ -266,6 +810,10 @@ export class WireframesService {
           status: true,
           pageCount: true,
           aiProvider: true,
+          aiModel: true,
+          platform: true,
+          style: true,
+          generationTimeMs: true,
           createdAt: true,
           createdBy: {
             select: { id: true, fullName: true, email: true },
@@ -281,6 +829,8 @@ export class WireframesService {
 
     return paginate(wireframes, total, query);
   }
+
+  // ─── GET LATEST ───
 
   async getLatest(projectId: string, user: CurrentUserShape) {
     const project = await this.prisma.project.findUnique({
@@ -304,8 +854,13 @@ export class WireframesService {
         pageCount: true,
         wireframeJson: true,
         designSystem: true,
+        navigationFlow: true,
         assumptions: true,
         aiProvider: true,
+        aiModel: true,
+        platform: true,
+        style: true,
+        generationTimeMs: true,
         createdAt: true,
         createdBy: {
           select: { id: true, fullName: true, email: true },
@@ -317,6 +872,12 @@ export class WireframesService {
             description: true,
             layoutJson: true,
             sortOrder: true,
+            screenType: true,
+            viewportWidth: true,
+            viewportHeight: true,
+            screenState: true,
+            annotations: true,
+            interactions: true,
             userFlowScreen: {
               select: { id: true, name: true, screenType: true },
             },
@@ -333,6 +894,8 @@ export class WireframesService {
     return wireframe;
   }
 
+  // ─── GET BY ID ───
+
   async getById(wireframeId: string, user: CurrentUserShape) {
     const wireframe = await this.prisma.wireframeSnapshot.findUnique({
       where: { id: wireframeId },
@@ -344,8 +907,13 @@ export class WireframesService {
         pageCount: true,
         wireframeJson: true,
         designSystem: true,
+        navigationFlow: true,
         assumptions: true,
         aiProvider: true,
+        aiModel: true,
+        platform: true,
+        style: true,
+        generationTimeMs: true,
         createdAt: true,
         project: {
           select: { id: true, organizationId: true },
@@ -360,6 +928,12 @@ export class WireframesService {
             description: true,
             layoutJson: true,
             sortOrder: true,
+            screenType: true,
+            viewportWidth: true,
+            viewportHeight: true,
+            screenState: true,
+            annotations: true,
+            interactions: true,
             userFlowScreen: {
               select: { id: true, name: true, screenType: true },
             },
@@ -382,6 +956,8 @@ export class WireframesService {
     const { project: _project, projectId: _projectId, ...result } = wireframe;
     return result;
   }
+
+  // ─── EXPORT ───
 
   async exportWireframe(
     projectId: string,
@@ -408,6 +984,7 @@ export class WireframesService {
             version: true,
             wireframeJson: true,
             designSystem: true,
+            navigationFlow: true,
             createdAt: true,
             screens: {
               select: {
@@ -416,6 +993,9 @@ export class WireframesService {
                 description: true,
                 layoutJson: true,
                 sortOrder: true,
+                screenType: true,
+                viewportWidth: true,
+                viewportHeight: true,
               },
               orderBy: { sortOrder: 'asc' },
             },
@@ -429,6 +1009,7 @@ export class WireframesService {
             version: true,
             wireframeJson: true,
             designSystem: true,
+            navigationFlow: true,
             createdAt: true,
             screens: {
               select: {
@@ -437,6 +1018,9 @@ export class WireframesService {
                 description: true,
                 layoutJson: true,
                 sortOrder: true,
+                screenType: true,
+                viewportWidth: true,
+                viewportHeight: true,
               },
               orderBy: { sortOrder: 'asc' },
             },
@@ -453,6 +1037,7 @@ export class WireframesService {
         data: {
           wireframeJson: wireframe.wireframeJson,
           designSystem: wireframe.designSystem,
+          navigationFlow: wireframe.navigationFlow,
           screens: wireframe.screens,
         },
       };
@@ -463,6 +1048,106 @@ export class WireframesService {
       version: wireframe.version,
       data: pdfBuffer,
     };
+  }
+
+  // ─── INDUSTRY DETECTION ───
+
+  detectIndustry(text: string): string {
+    const lowerText = text.toLowerCase();
+
+    let bestMatch = 'general';
+    let bestScore = 0;
+
+    for (const [industry, keywords] of Object.entries(INDUSTRY_PATTERNS)) {
+      const score = keywords.filter((kw) => lowerText.includes(kw)).length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = industry;
+      }
+    }
+
+    return bestMatch;
+  }
+
+  // ─── PRIVATE HELPERS ───
+
+  private getViewportWidth(platform?: string | null): number {
+    switch (platform) {
+      case 'MOBILE': return 375;
+      case 'TABLET': return 768;
+      default: return 1440;
+    }
+  }
+
+  private getViewportHeight(platform?: string | null): number {
+    switch (platform) {
+      case 'MOBILE': return 812;
+      case 'TABLET': return 1024;
+      default: return 900;
+    }
+  }
+
+  private async getSnapshotWithAccess(snapshotId: string, user: CurrentUserShape) {
+    const snapshot = await this.prisma.wireframeSnapshot.findUnique({
+      where: { id: snapshotId },
+      select: {
+        id: true,
+        projectId: true,
+        requirementSnapshotId: true,
+        userFlowSnapshotId: true,
+        wireframeJson: true,
+        designSystem: true,
+        navigationFlow: true,
+        assumptions: true,
+        sourcePrompt: true,
+        platform: true,
+        style: true,
+        aiProvider: true,
+        aiModel: true,
+        project: {
+          select: { id: true, organizationId: true, name: true },
+        },
+      },
+    });
+
+    if (!snapshot) {
+      throw new NotFoundException('Wireframe snapshot not found');
+    }
+
+    await this.requireProjectAccess(
+      snapshot.projectId,
+      snapshot.project.organizationId,
+      user,
+    );
+
+    return snapshot;
+  }
+
+  private async getSnapshotAndScreen(
+    snapshotId: string,
+    screenId: string,
+    user: CurrentUserShape,
+  ) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const screen = await this.prisma.wireframeScreen.findUnique({
+      where: { id: screenId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        sortOrder: true,
+        screenType: true,
+        wireframeSnapshotId: true,
+      },
+    });
+
+    if (!screen || screen.wireframeSnapshotId !== snapshotId) {
+      throw new NotFoundException('Screen not found in this snapshot');
+    }
+
+    return { snapshot, screen };
   }
 
   private async generatePdf(wireframe: {

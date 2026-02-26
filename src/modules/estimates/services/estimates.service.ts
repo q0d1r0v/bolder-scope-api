@@ -459,6 +459,7 @@ export class EstimatesService {
         payload.instruction,
         aiContext,
       );
+    const normalizedEstimation = this.normalizeProfessionalEstimate(estimation);
 
     const latestVersion = await this.prisma.estimateSnapshot.findFirst({
       where: { projectId: payload.projectId },
@@ -476,13 +477,14 @@ export class EstimatesService {
           status: EstimateStatus.GENERATED,
           aiProvider: AiProvider.CLAUDE,
           currency,
-          timelineMinDays: estimation.timelineMinDays,
-          timelineMaxDays: estimation.timelineMaxDays,
-          costMin: estimation.costMin,
-          costMax: estimation.costMax,
-          confidenceScore: estimation.confidenceScore,
-          assumptions: estimation.assumptions?.assumptions?.join('; ') ?? null,
-          breakdownJson: estimation as object,
+          timelineMinDays: normalizedEstimation.timelineMinDays,
+          timelineMaxDays: normalizedEstimation.timelineMaxDays,
+          costMin: normalizedEstimation.costMin,
+          costMax: normalizedEstimation.costMax,
+          confidenceScore: normalizedEstimation.confidenceScore,
+          assumptions:
+            normalizedEstimation.assumptions?.assumptions?.join('; ') ?? null,
+          breakdownJson: normalizedEstimation as object,
           createdById: user.userId,
         },
         select: {
@@ -512,8 +514,12 @@ export class EstimatesService {
         metadata: object;
       }> = [];
       let sortOrder = 0;
+      const lineItemHourlyRate =
+        this.pickFiniteNumber(
+          normalizedEstimation.costCalculation?.hourlyRate,
+        ) ?? 0;
 
-      for (const mod of estimation.wbs.modules) {
+      for (const mod of normalizedEstimation.wbs.modules) {
         for (const task of mod.tasks) {
           const matchingFeature = features.find(
             (f) => f.title.toLowerCase() === task.taskName.toLowerCase(),
@@ -526,8 +532,8 @@ export class EstimatesService {
             description: task.description,
             hoursMin: task.hoursMin,
             hoursMax: task.hoursMax,
-            costMin: task.hoursMin * estimation.costCalculation.hourlyRate,
-            costMax: task.hoursMax * estimation.costCalculation.hourlyRate,
+            costMin: task.hoursMin * lineItemHourlyRate,
+            costMax: task.hoursMax * lineItemHourlyRate,
             sortOrder: sortOrder++,
             metadata: {
               moduleName: mod.moduleName,
@@ -558,7 +564,7 @@ export class EstimatesService {
           projectId: payload.projectId,
           actorUserId: user.userId,
           eventType: ProjectEventType.ESTIMATE_GENERATED,
-          summary: `Professional estimate v${nextVersion} generated (${currency} ${estimation.costMin}-${estimation.costMax})`,
+          summary: `Professional estimate v${nextVersion} generated (${currency} ${normalizedEstimation.costMin}-${normalizedEstimation.costMax})`,
           payload: {
             estimateSnapshotId: snapshot.id,
             aiRunId,
@@ -589,7 +595,7 @@ export class EstimatesService {
 
     return {
       ...estimate,
-      breakdownJson: estimation,
+      breakdownJson: normalizedEstimation,
       lineItems,
     };
   }
@@ -759,6 +765,145 @@ export class EstimatesService {
         createdAt: estimate.createdAt,
       },
     );
+  }
+
+  private normalizeProfessionalEstimate(
+    estimation: ProfessionalEstimateResult,
+  ): ProfessionalEstimateResult {
+    const timelineFromDates = this.calculateTimelineDays(
+      estimation.timeline?.startDate,
+      estimation.timeline?.endDate,
+    );
+    const timelineFromWeeks = this.pickFiniteNumber(
+      estimation.timeline?.totalWeeks,
+    );
+
+    const timelineMinCandidate = this.pickFiniteNumber(
+      estimation.timelineMinDays,
+      estimation.wbs?.totalDaysMin,
+      timelineFromDates,
+      timelineFromWeeks !== null ? timelineFromWeeks * 7 : null,
+    );
+    const timelineMaxCandidate = this.pickFiniteNumber(
+      estimation.timelineMaxDays,
+      estimation.wbs?.totalDaysMax,
+      timelineFromDates,
+      timelineFromWeeks !== null ? timelineFromWeeks * 7 : null,
+      timelineMinCandidate,
+    );
+
+    const totalCost = this.pickFiniteNumber(
+      estimation.costCalculation?.totalCost,
+    );
+    const contingencyAmount = this.pickFiniteNumber(
+      estimation.costCalculation?.contingencyAmount,
+    );
+    const hourlyRate = this.pickFiniteNumber(
+      estimation.costCalculation?.hourlyRate,
+    );
+    const totalHoursMin = this.pickFiniteNumber(
+      estimation.wbs?.totalHoursMin,
+      estimation.costCalculation?.totalHours,
+    );
+    const totalHoursMax = this.pickFiniteNumber(
+      estimation.wbs?.totalHoursMax,
+      estimation.costCalculation?.totalHours,
+      totalHoursMin,
+    );
+    const costFromModuleBreakdown = Array.isArray(
+      estimation.costCalculation?.costBreakdownByModule,
+    )
+      ? estimation.costCalculation.costBreakdownByModule.reduce(
+          (sum, item) => sum + (this.pickFiniteNumber(item.cost) ?? 0),
+          0,
+        )
+      : null;
+
+    const costMinCandidate = this.pickFiniteNumber(
+      estimation.costMin,
+      totalCost,
+      hourlyRate !== null && totalHoursMin !== null
+        ? hourlyRate * totalHoursMin
+        : null,
+      costFromModuleBreakdown,
+    );
+    const costMaxCandidate = this.pickFiniteNumber(
+      estimation.costMax,
+      totalCost !== null
+        ? totalCost + (this.pickFiniteNumber(contingencyAmount) ?? 0)
+        : null,
+      hourlyRate !== null && totalHoursMax !== null
+        ? hourlyRate * totalHoursMax
+        : null,
+      costMinCandidate,
+    );
+
+    if (
+      timelineMinCandidate === null ||
+      timelineMaxCandidate === null ||
+      costMinCandidate === null ||
+      costMaxCandidate === null
+    ) {
+      throw new BadRequestException(
+        'AI returned incomplete estimate totals (timeline/cost). Please regenerate the estimate.',
+      );
+    }
+
+    const timelineMinDays = Math.max(1, Math.round(timelineMinCandidate));
+    const timelineMaxDays = Math.max(
+      timelineMinDays,
+      Math.round(timelineMaxCandidate),
+    );
+    const costMin = Number(Math.max(0, costMinCandidate).toFixed(2));
+    const costMax = Number(Math.max(costMin, costMaxCandidate).toFixed(2));
+
+    return {
+      ...estimation,
+      timelineMinDays,
+      timelineMaxDays,
+      costMin,
+      costMax,
+    };
+  }
+
+  private calculateTimelineDays(
+    startDate?: string,
+    endDate?: string,
+  ): number | null {
+    if (!startDate || !endDate) {
+      return null;
+    }
+
+    const start = new Date(`${startDate}T00:00:00.000Z`);
+    const end = new Date(`${endDate}T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return null;
+    }
+
+    const diffMs = end.getTime() - start.getTime();
+    if (diffMs < 0) {
+      return null;
+    }
+
+    const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    return Math.max(1, days);
+  }
+
+  private pickFiniteNumber(...values: Array<unknown>): number | null {
+    for (const value of values) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+          return parsed;
+        }
+      }
+    }
+
+    return null;
   }
 
   private async requireProjectAccess(

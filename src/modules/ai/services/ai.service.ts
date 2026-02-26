@@ -326,6 +326,21 @@ export type TextToDesignResult = {
   assumptions: string;
 };
 
+type TextToDesignOptions = {
+  platform: string;
+  style?: string;
+  screenCount?: number;
+  colorScheme?: string;
+  projectName?: string;
+  projectDescription?: string;
+  industry?: string;
+  suggestedScreens?: Array<{
+    name: string;
+    description: string;
+    screenType: string;
+  }>;
+};
+
 export type CodeGenFileResult = {
   filePath: string;
   fileName: string;
@@ -904,12 +919,7 @@ Return JSON with this structure:
 
   async generateDesignFromText(
     prompt: string,
-    options: {
-      platform: string;
-      style?: string;
-      screenCount?: number;
-      colorScheme?: string;
-    },
+    options: TextToDesignOptions,
     context?: { organizationId?: string; projectId?: string; userId: string },
   ): Promise<{ result: TextToDesignResult; aiRunId: string }> {
     this.ensureConfigured();
@@ -928,23 +938,19 @@ Return JSON with this structure:
     });
 
     const systemPrompt = this.buildTextToDesignPrompt(options);
+    const userMessage = this.buildTextToDesignUserMessage(prompt, options);
 
     const result = await this.callClaude<TextToDesignResult>(
       aiRun.id,
       systemPrompt,
-      prompt,
+      userMessage,
       16384,
     );
 
     return { result, aiRunId: aiRun.id };
   }
 
-  private buildTextToDesignPrompt(options: {
-    platform: string;
-    style?: string;
-    screenCount?: number;
-    colorScheme?: string;
-  }): string {
+  private buildTextToDesignPrompt(options: TextToDesignOptions): string {
     const platformGuidance: Record<string, string> = {
       WEB: 'Design for desktop-first responsive web application. Use standard web patterns: navigation bars, sidebars, breadcrumbs, multi-column layouts. Minimum viewport width: 1280px.',
       MOBILE:
@@ -972,6 +978,20 @@ Return JSON with this structure:
       ? `Use a color scheme based on: "${options.colorScheme}". Derive a FULL premium palette from this preference.`
       : 'Choose an appropriate color palette based on the application type and style.';
 
+    const industryInstruction = options.industry
+      ? `Primary industry context: "${options.industry}". Use domain-specific UX patterns expected by users in this space.`
+      : 'No industry was provided. Infer the domain from the prompt and apply matching UX patterns.';
+
+    const suggestedScreensInstruction =
+      options.suggestedScreens && options.suggestedScreens.length > 0
+        ? options.suggestedScreens
+          .map(
+            (screen, index) =>
+              `${index + 1}. ${screen.name} (${screen.screenType}) - ${screen.description}`,
+          )
+          .join('\n')
+        : 'No suggested screen blueprint was provided.';
+
     return `You are a world-class UI/UX designer creating complete application designs from text descriptions. Your output must match the quality of a $100,000 design agency project — premium, polished, and production-ready for Konva canvas rendering.
 
 ## Your Process
@@ -991,6 +1011,12 @@ ${screenCountInstruction}
 
 ## Color Scheme
 ${colorInstruction}
+
+## Industry
+${industryInstruction}
+
+## Recommended Screen Blueprint
+${suggestedScreensInstruction}
 
 ## COMPONENT TYPES
 Use these exact type names:
@@ -1133,6 +1159,41 @@ width: "full"|"1/2"|"1/3"|"2/3"|"1/4"|"3/4"|"auto"
 8. Every screen must be reachable via the navigationFlow
 
 Return ONLY valid JSON. No text outside the JSON object.`;
+  }
+
+  private buildTextToDesignUserMessage(
+    prompt: string,
+    options: TextToDesignOptions,
+  ): string {
+    const suggestedScreens =
+      options.suggestedScreens && options.suggestedScreens.length > 0
+        ? options.suggestedScreens
+          .map(
+            (screen, index) =>
+              `${index + 1}. ${screen.name} (${screen.screenType}) - ${screen.description}`,
+          )
+          .join('\n')
+        : 'Not provided';
+
+    return `Create a premium product design from this brief.
+
+USER BRIEF:
+${prompt}
+
+PROJECT CONTEXT:
+- Name: ${options.projectName ?? 'Not provided'}
+- Description: ${options.projectDescription ?? 'Not provided'}
+- Industry hint: ${options.industry ?? 'Not provided'}
+
+PREFERRED SCREEN BLUEPRINT:
+${suggestedScreens}
+
+QUALITY TARGET:
+- Keep structure clean and focused; avoid cluttered layouts.
+- Preserve strong visual hierarchy and clear CTA emphasis.
+- Maintain consistency across all screens using one cohesive design system.
+- Use realistic product copy and labels, never lorem ipsum.
+`;
   }
 
   async generateCode(

@@ -211,6 +211,103 @@ export class WireframesController {
     return this.wireframesService.forkSnapshot(snapshotId, instruction, user);
   }
 
+  // ─── PIPELINE: VALIDATE → BEAUTIFY → RENDER ───
+
+  @Get(':snapshotId/validate')
+  @ApiOperation({
+    summary: 'Validate wireframe screens and design system',
+    description:
+      'Runs structural validation on all screens: checks component types, props, visual hierarchy, accessibility, and design system completeness.',
+  })
+  @ApiOkResponse({ description: 'Validation result with issues and stats' })
+  @ApiNotFoundResponse({ description: 'Snapshot not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
+  validateSnapshot(
+    @Param('snapshotId') snapshotId: string,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.wireframesService.validateSnapshot(snapshotId, user);
+  }
+
+  @Get(':snapshotId/beautify')
+  @ApiOperation({
+    summary: 'Resolve design tokens into concrete styles',
+    description:
+      'Validates, auto-fixes, then resolves the design system tokens (colors, typography, spacing, shadows, radii) into concrete CSS-ready style objects for every component.',
+  })
+  @ApiOkResponse({ description: 'Beautified screens with resolved tokens' })
+  @ApiNotFoundResponse({ description: 'Snapshot not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
+  beautifySnapshot(
+    @Param('snapshotId') snapshotId: string,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.wireframesService.beautifySnapshot(snapshotId, user);
+  }
+
+  @Post(':snapshotId/render')
+  @SkipResponseWrap()
+  @ApiOperation({
+    summary: 'Render wireframe screens as visual PDF documents',
+    description:
+      'Full pipeline: validate → auto-fix → beautify → render. Generates pixel-accurate visual representations of each screen as PDF buffers.',
+  })
+  @ApiCreatedResponse({ description: 'Rendered screen PDFs' })
+  @ApiNotFoundResponse({ description: 'Snapshot not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
+  async renderSnapshot(
+    @Param('snapshotId') snapshotId: string,
+    @Body('screenId') screenId: string | undefined,
+    @CurrentUser() user: CurrentUserShape,
+    @Res() res: Response,
+  ) {
+    const result = await this.wireframesService.renderSnapshot(
+      snapshotId,
+      user,
+      screenId,
+    );
+
+    if (result.screens.length === 1) {
+      const screen = result.screens[0];
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${screen.screenName}.pdf"`,
+      );
+      res.send(screen.buffer);
+    } else {
+      const archiver = (await import('archiver')).default;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="wireframe-screens.zip"`,
+      );
+
+      const archive = archiver('zip', { zlib: { level: 6 } });
+      archive.pipe(res);
+      for (const screen of result.screens) {
+        archive.append(screen.buffer, { name: `${screen.screenName}.pdf` });
+      }
+      await archive.finalize();
+    }
+  }
+
+  @Get(':snapshotId/pipeline')
+  @ApiOperation({
+    summary: 'Run full processing pipeline: validate → beautify → render',
+    description:
+      'Executes the complete wireframe processing pipeline and returns validation results, beautified screens with resolved tokens, and render metadata.',
+  })
+  @ApiOkResponse({ description: 'Full pipeline result' })
+  @ApiNotFoundResponse({ description: 'Snapshot not found' })
+  @ApiForbiddenResponse({ description: 'Not a member of this project' })
+  processFullPipeline(
+    @Param('snapshotId') snapshotId: string,
+    @CurrentUser() user: CurrentUserShape,
+  ) {
+    return this.wireframesService.processFullPipeline(snapshotId, user);
+  }
+
   // ─── RETRIEVAL ───
 
   @Get('project/:projectId')

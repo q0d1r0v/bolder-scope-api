@@ -21,7 +21,11 @@ import {
   paginate,
 } from '@/common/helpers/pagination.helper';
 import { PrismaService } from '@/prisma/prisma.service';
-import { AiService } from '@/modules/ai/services/ai.service';
+import {
+  AiService,
+  type WireframeDesignSystem,
+  type WireframeScreenData,
+} from '@/modules/ai/services/ai.service';
 import { GenerateWireframeDto } from '@/modules/wireframes/dto/generate-wireframe.dto';
 import { ExportFormat } from '@/modules/wireframes/dto/export-wireframe.dto';
 import { TextToDesignDto } from '@/modules/wireframes/dto/text-to-design.dto';
@@ -31,7 +35,13 @@ import { AddScreenDto } from '@/modules/wireframes/dto/add-screen.dto';
 import { ApplyStyleDto } from '@/modules/wireframes/dto/apply-style.dto';
 import { ReorderScreensDto } from '@/modules/wireframes/dto/reorder-screens.dto';
 import { RegenerateDesignSystemDto } from '@/modules/wireframes/dto/regenerate-design-system.dto';
-import { INDUSTRY_PATTERNS } from '@/modules/wireframes/prompts/layout-generation.prompt';
+import {
+  INDUSTRY_PATTERNS,
+  INDUSTRY_SCREEN_SETS,
+} from '@/modules/wireframes/prompts/layout-generation.prompt';
+import { WireframeValidatorService } from './wireframe-validator.service';
+import { WireframeBeautifierService } from './wireframe-beautifier.service';
+import { WireframeRendererService } from './wireframe-renderer.service';
 
 @Injectable()
 export class WireframesService {
@@ -40,6 +50,9 @@ export class WireframesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AiService,
+    private readonly validator: WireframeValidatorService,
+    private readonly beautifier: WireframeBeautifierService,
+    private readonly renderer: WireframeRendererService,
   ) {}
 
   // ─── GENERATE (from requirements + user flows) ───
@@ -287,6 +300,14 @@ export class WireframesService {
       userId: user.userId,
     };
 
+    const industry = this.detectIndustry(
+      `${project.name} ${project.description ?? ''} ${payload.prompt}`,
+    );
+    const suggestedScreens = this.getSuggestedScreens(
+      industry,
+      payload.screenCount,
+    );
+
     const { result: designResult, aiRunId } =
       await this.aiService.generateDesignFromText(
         payload.prompt,
@@ -295,6 +316,10 @@ export class WireframesService {
           style: payload.style,
           screenCount: payload.screenCount,
           colorScheme: payload.colorScheme,
+          projectName: project.name,
+          projectDescription: project.description ?? undefined,
+          industry,
+          suggestedScreens,
         },
         aiContext,
       );
@@ -1050,6 +1075,212 @@ export class WireframesService {
     };
   }
 
+  // ─── VALIDATE + BEAUTIFY + RENDER PIPELINE ───
+
+  async validateSnapshot(snapshotId: string, user: CurrentUserShape) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshotId },
+      select: { name: true, layoutJson: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const screenData: WireframeScreenData[] = screens.map((s) => {
+      const layout = s.layoutJson as Record<string, unknown>;
+      return {
+        screenName: s.name,
+        title: (layout.title as string) ?? s.name,
+        description: '',
+        sections: (layout.sections ?? []) as WireframeScreenData['sections'],
+      };
+    });
+
+    const designSystem = (snapshot.designSystem as WireframeDesignSystem) ?? undefined;
+    const result = this.validator.validateScreens(screenData, designSystem);
+
+    this.logger.log(
+      `Validation complete for snapshot ${snapshotId}: ${result.stats.errorCount} errors, ${result.stats.warningCount} warnings`,
+    );
+
+    return result;
+  }
+
+  async beautifySnapshot(snapshotId: string, user: CurrentUserShape) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshotId },
+      select: { id: true, name: true, description: true, layoutJson: true, screenType: true },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const screenData: WireframeScreenData[] = screens.map((s) => {
+      const layout = s.layoutJson as Record<string, unknown>;
+      return {
+        screenName: s.name,
+        title: (layout.title as string) ?? s.name,
+        description: s.description ?? '',
+        screenType: s.screenType ?? 'page',
+        sections: (layout.sections ?? []) as WireframeScreenData['sections'],
+      };
+    });
+
+    const designSystem = (snapshot.designSystem as WireframeDesignSystem) ?? undefined;
+
+    // Step 1: Validate & auto-fix
+    const validation = this.validator.validateScreens(screenData, designSystem);
+    const fixedScreens = validation.valid ? screenData : this.validator.autoFix(screenData);
+
+    // Step 2: Beautify
+    const beautified = this.beautifier.beautify(fixedScreens, designSystem);
+
+    this.logger.log(
+      `Beautification complete for snapshot ${snapshotId}: ${beautified.screens.length} screens processed`,
+    );
+
+    return {
+      screens: beautified.screens,
+      resolvedTokens: beautified.resolvedTokens,
+      validation: {
+        valid: validation.valid,
+        errorCount: validation.stats.errorCount,
+        warningCount: validation.stats.warningCount,
+        autoFixed: !validation.valid,
+      },
+    };
+  }
+
+  async renderSnapshot(
+    snapshotId: string,
+    user: CurrentUserShape,
+    screenId?: string,
+  ) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const whereClause: Prisma.WireframeScreenWhereInput = {
+      wireframeSnapshotId: snapshotId,
+    };
+    if (screenId) {
+      whereClause.id = screenId;
+    }
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        screenType: true,
+        viewportWidth: true,
+        viewportHeight: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    if (screens.length === 0) {
+      throw new NotFoundException('No screens found');
+    }
+
+    const screenData: WireframeScreenData[] = screens.map((s) => {
+      const layout = s.layoutJson as Record<string, unknown>;
+      return {
+        screenName: s.name,
+        title: (layout.title as string) ?? s.name,
+        description: s.description ?? '',
+        screenType: s.screenType ?? 'page',
+        sections: (layout.sections ?? []) as WireframeScreenData['sections'],
+      };
+    });
+
+    const designSystem = (snapshot.designSystem as WireframeDesignSystem) ?? undefined;
+
+    // Pipeline: validate → auto-fix → beautify → render
+    const validation = this.validator.validateScreens(screenData, designSystem);
+    const fixedScreens = validation.valid ? screenData : this.validator.autoFix(screenData);
+    const beautified = this.beautifier.beautify(fixedScreens, designSystem);
+
+    const viewportWidth = screens[0].viewportWidth ?? 1440;
+    const rendered = await this.renderer.renderScreens(beautified.screens, viewportWidth);
+
+    this.logger.log(
+      `Render complete for snapshot ${snapshotId}: ${rendered.totalScreens} screens rendered at ${viewportWidth}px`,
+    );
+
+    return rendered;
+  }
+
+  async processFullPipeline(snapshotId: string, user: CurrentUserShape) {
+    const snapshot = await this.getSnapshotWithAccess(snapshotId, user);
+
+    const screens = await this.prisma.wireframeScreen.findMany({
+      where: { wireframeSnapshotId: snapshotId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        layoutJson: true,
+        screenType: true,
+        viewportWidth: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const screenData: WireframeScreenData[] = screens.map((s) => {
+      const layout = s.layoutJson as Record<string, unknown>;
+      return {
+        screenName: s.name,
+        title: (layout.title as string) ?? s.name,
+        description: s.description ?? '',
+        screenType: s.screenType ?? 'page',
+        sections: (layout.sections ?? []) as WireframeScreenData['sections'],
+      };
+    });
+
+    const designSystem = (snapshot.designSystem as WireframeDesignSystem) ?? undefined;
+
+    // Step 1: Validate
+    const validation = this.validator.validateScreens(screenData, designSystem);
+
+    // Step 2: Auto-fix if needed
+    const fixedScreens = validation.valid ? screenData : this.validator.autoFix(screenData);
+
+    // Step 3: Beautify (resolve design tokens)
+    const beautified = this.beautifier.beautify(fixedScreens, designSystem);
+
+    // Step 4: Render (generate visual PDFs)
+    const viewportWidth = screens[0]?.viewportWidth ?? 1440;
+    const rendered = await this.renderer.renderScreens(beautified.screens, viewportWidth);
+
+    this.logger.log(
+      `Full pipeline complete for snapshot ${snapshotId}: validated(${validation.stats.errorCount} errors), beautified(${beautified.screens.length} screens), rendered(${rendered.totalScreens} screens)`,
+    );
+
+    return {
+      validation: {
+        valid: validation.valid,
+        issues: validation.issues,
+        stats: validation.stats,
+        autoFixed: !validation.valid,
+      },
+      beautified: {
+        screens: beautified.screens,
+        resolvedTokens: beautified.resolvedTokens,
+      },
+      rendered: {
+        totalScreens: rendered.totalScreens,
+        screens: rendered.screens.map((s) => ({
+          screenName: s.screenName,
+          width: s.width,
+          height: s.height,
+          format: s.format,
+          bufferSize: s.buffer.length,
+        })),
+      },
+    };
+  }
+
   // ─── INDUSTRY DETECTION ───
 
   detectIndustry(text: string): string {
@@ -1066,7 +1297,25 @@ export class WireframesService {
       }
     }
 
+    // Avoid false positives from generic words (e.g., "project", "app").
+    if (bestScore < 2) {
+      return 'general';
+    }
+
     return bestMatch;
+  }
+
+  private getSuggestedScreens(industry: string, desiredCount?: number) {
+    const baseSet =
+      INDUSTRY_SCREEN_SETS[industry]?.screens
+      ?? INDUSTRY_SCREEN_SETS.general.screens;
+
+    if (!desiredCount || desiredCount >= baseSet.length) {
+      return baseSet;
+    }
+
+    const minimum = Math.max(1, desiredCount);
+    return baseSet.slice(0, minimum);
   }
 
   // ─── PRIVATE HELPERS ───

@@ -17,6 +17,10 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { CreateAiRunDto } from '@/modules/ai/dto/create-ai-run.dto';
 import { DESIGN_SYSTEM_PROMPT } from '@/modules/wireframes/prompts/design-system.prompt';
 import { LAYOUT_GENERATION_PROMPT } from '@/modules/wireframes/prompts/layout-generation.prompt';
+import {
+  PROFESSIONAL_ESTIMATE_SYSTEM_PROMPT,
+  REGENERATE_SECTION_PROMPT,
+} from '@/modules/estimates/prompts/professional-estimate.prompt';
 
 export type StructuredRequirement = {
   projectOverview: string;
@@ -52,6 +56,187 @@ export type TimelineCostEstimate = {
     costMin: number;
     costMax: number;
   }>;
+};
+
+// ── Professional Estimate Types ──
+
+export type EstimateProjectOverview = {
+  projectName: string;
+  clientName: string;
+  version: string;
+  date: string;
+  description: string;
+  goals: string[];
+};
+
+export type EstimateScope = {
+  inScope: string[];
+  outOfScope: string[];
+  features: Array<{
+    name: string;
+    description: string;
+    priority: 'MUST' | 'SHOULD' | 'COULD' | 'WONT';
+  }>;
+  modules: string[];
+  integrations: string[];
+  platforms: string[];
+};
+
+export type EstimateTechnicalArchitecture = {
+  frontend: string[];
+  backend: string[];
+  database: string[];
+  hosting: string[];
+  cloudServices: string[];
+  thirdPartyServices: string[];
+  architectureType: string;
+  architectureDiagramDescription: string;
+};
+
+export type WbsTask = {
+  taskId: string;
+  taskName: string;
+  description: string;
+  complexity: 'XS' | 'S' | 'M' | 'L' | 'XL';
+  hoursMin: number;
+  hoursMax: number;
+  daysMin: number;
+  daysMax: number;
+  responsibleRole: string;
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+  dependencies: string[];
+};
+
+export type WbsModule = {
+  moduleName: string;
+  description: string;
+  tasks: WbsTask[];
+  totalHoursMin: number;
+  totalHoursMax: number;
+};
+
+export type EstimateWbs = {
+  modules: WbsModule[];
+  totalHoursMin: number;
+  totalHoursMax: number;
+  totalDaysMin: number;
+  totalDaysMax: number;
+};
+
+export type SprintPlan = {
+  sprintNumber: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+  goals: string[];
+  taskIds: string[];
+};
+
+export type Milestone = {
+  name: string;
+  date: string;
+  deliverables: string[];
+};
+
+export type EstimateTimeline = {
+  startDate: string;
+  endDate: string;
+  totalWeeks: number;
+  sprints: SprintPlan[];
+  milestones: Milestone[];
+  testPhaseStart: string;
+  testPhaseEnd: string;
+  deployDate: string;
+};
+
+export type PaymentStage = {
+  stageName: string;
+  percentage: number;
+  amount: number;
+  triggerMilestone: string;
+};
+
+export type EstimateCostCalculation = {
+  totalHours: number;
+  hourlyRate: number;
+  totalCost: number;
+  currency: string;
+  paymentStages: PaymentStage[];
+  advancePaymentPercent: number;
+  advancePaymentAmount: number;
+  additionalWorkHourlyRate: number;
+  contingencyPercent: number;
+  contingencyAmount: number;
+  costBreakdownByModule: Array<{
+    moduleName: string;
+    hours: number;
+    cost: number;
+  }>;
+};
+
+export type EstimateAssumptions = {
+  assumptions: string[];
+  technicalConstraints: string[];
+  resourceConstraints: string[];
+  dependencies: string[];
+  risks: Array<{
+    risk: string;
+    impact: 'LOW' | 'MEDIUM' | 'HIGH';
+    mitigation: string;
+  }>;
+};
+
+export type EstimateChangeManagement = {
+  scopeChangeProcess: string[];
+  additionalRequirementEvaluation: string;
+  approvalProcess: string[];
+  changeRequestTemplate: {
+    fields: string[];
+  };
+};
+
+export type EstimateAcceptanceCriteria = {
+  acceptanceConditions: string[];
+  testProcess: string[];
+  demoDeliveryPlan: string;
+  launchEnvironment: string[];
+  technicalDocumentation: string[];
+};
+
+export type EstimateAdditionalSections = {
+  resourceAllocation: Array<{
+    role: string;
+    count: number;
+    allocation: string;
+  }>;
+  techSupportPlan: string;
+  warrantyPeriodMonths: number;
+  monthlyServiceCost: number;
+  scalingOptions: string[];
+  futureDevelopmentPhases: Array<{
+    phaseName: string;
+    description: string;
+    estimatedTimeline: string;
+    estimatedCost: number;
+  }>;
+};
+
+export type ProfessionalEstimateResult = {
+  projectOverview: EstimateProjectOverview;
+  scope: EstimateScope;
+  technicalArchitecture: EstimateTechnicalArchitecture;
+  wbs: EstimateWbs;
+  timeline: EstimateTimeline;
+  costCalculation: EstimateCostCalculation;
+  assumptions: EstimateAssumptions;
+  changeManagement: EstimateChangeManagement;
+  acceptanceCriteria: EstimateAcceptanceCriteria;
+  additionalSections: EstimateAdditionalSections;
+  timelineMinDays: number;
+  timelineMaxDays: number;
+  costMin: number;
+  costMax: number;
+  confidenceScore: number;
 };
 
 export type TechStackResult = {
@@ -404,6 +589,120 @@ Return ONLY valid JSON. No text outside the JSON object.`;
       aiRun.id,
       systemPrompt,
       `Requirements:\n${JSON.stringify(structuredJson, null, 2)}\n\nFeatures:\n${JSON.stringify(features, null, 2)}`,
+    );
+
+    return { result, aiRunId: aiRun.id };
+  }
+
+  async generateProfessionalEstimate(
+    structuredJson: Record<string, unknown>,
+    features: Array<{
+      title: string;
+      description: string;
+      priority: string;
+      complexity: string;
+    }>,
+    currency: string,
+    projectName: string,
+    clientName: string,
+    techStack?: {
+      frontend: string[];
+      backend: string[];
+      database: string[];
+      infrastructure: string[];
+    },
+    instruction?: string,
+    context?: { organizationId?: string; projectId?: string; userId: string },
+  ): Promise<{ result: ProfessionalEstimateResult; aiRunId: string }> {
+    this.ensureConfigured();
+
+    const aiRun = await this.prisma.aiRun.create({
+      data: {
+        organizationId: context?.organizationId ?? null,
+        projectId: context?.projectId ?? null,
+        initiatedById: context?.userId ?? null,
+        provider: AiProvider.CLAUDE,
+        model: this.model,
+        taskType: AiTaskType.PROFESSIONAL_ESTIMATE,
+        status: AiRunStatus.QUEUED,
+        requestPayload: {
+          structuredJson,
+          features,
+          currency,
+          projectName,
+          clientName,
+          techStack,
+          instruction,
+        } as object,
+      },
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const parts = [
+      `Project Name: ${projectName}`,
+      `Client Name: ${clientName}`,
+      `Currency: ${currency}`,
+      `Today's Date: ${today}`,
+      `\nStructured Requirements:\n${JSON.stringify(structuredJson, null, 2)}`,
+      `\nFeatures:\n${JSON.stringify(features, null, 2)}`,
+    ];
+
+    if (techStack) {
+      parts.push(`\nTech Stack:\n${JSON.stringify(techStack, null, 2)}`);
+    }
+
+    if (instruction) {
+      parts.push(`\nAdditional Instructions: ${instruction}`);
+    }
+
+    const userMessage = parts.join('\n');
+
+    const result = await this.callClaude<ProfessionalEstimateResult>(
+      aiRun.id,
+      PROFESSIONAL_ESTIMATE_SYSTEM_PROMPT,
+      userMessage,
+      16384,
+    );
+
+    return { result, aiRunId: aiRun.id };
+  }
+
+  async regenerateEstimateSection(
+    fullEstimate: ProfessionalEstimateResult,
+    sectionName: string,
+    instruction?: string,
+    context?: { organizationId?: string; projectId?: string; userId: string },
+  ): Promise<{ result: Record<string, unknown>; aiRunId: string }> {
+    this.ensureConfigured();
+
+    const aiRun = await this.prisma.aiRun.create({
+      data: {
+        organizationId: context?.organizationId ?? null,
+        projectId: context?.projectId ?? null,
+        initiatedById: context?.userId ?? null,
+        provider: AiProvider.CLAUDE,
+        model: this.model,
+        taskType: AiTaskType.PROFESSIONAL_ESTIMATE,
+        status: AiRunStatus.QUEUED,
+        requestPayload: { sectionName, instruction } as object,
+      },
+    });
+
+    const currentSection = fullEstimate[sectionName as keyof ProfessionalEstimateResult];
+
+    const userMessage = [
+      `Full estimate context:\n${JSON.stringify(fullEstimate, null, 2)}`,
+      `\nSection to regenerate: ${sectionName}`,
+      `\nCurrent value of this section:\n${JSON.stringify(currentSection, null, 2)}`,
+      instruction ? `\nInstruction: ${instruction}` : '',
+    ].join('\n');
+
+    const result = await this.callClaude<Record<string, unknown>>(
+      aiRun.id,
+      REGENERATE_SECTION_PROMPT,
+      userMessage,
+      8192,
     );
 
     return { result, aiRunId: aiRun.id };
